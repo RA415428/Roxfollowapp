@@ -191,7 +191,7 @@ fun HomeScreen(
                                 try {
                                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                     val clipData = clipboard.primaryClip
-                                    val text = clipData.getItemAt(0)?.text
+                                    val text = clipData?.getItemAt(0)?.text
                                     if (text != null) {
                                         targetUrl = text.toString()
                                     }

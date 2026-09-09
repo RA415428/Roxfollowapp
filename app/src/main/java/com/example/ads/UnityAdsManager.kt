@@ -21,10 +21,6 @@ object UnityAdsManager {
     private const val GAME_ID = "800368206"
     const val REWARDED_PLACEMENT_ID = "Rewarded_Android"
 
-    // Real Game ID + placement are live now, so test mode is off (real ads will serve).
-    // While you're personally testing, register this phone as a "Test device" in the
-    // Unity dashboard (Monetization > Settings > Test device) so your own taps/impressions
-    // don't count as invalid traffic.
     private const val TEST_MODE = false
 
     private var isInitialized = false
@@ -54,10 +50,15 @@ object UnityAdsManager {
 
     // ---------- Rewarded ----------
 
+    @Volatile
+    private var rewardedAdLoaded = false
+
     fun loadRewardedAd() {
+        rewardedAdLoaded = false
         UnityAds.load(REWARDED_PLACEMENT_ID, object : IUnityAdsLoadListener {
             override fun onUnityAdsAdLoaded(placementId: String?) {
                 Log.d(TAG, "Rewarded ad loaded: $placementId")
+                rewardedAdLoaded = true
             }
 
             override fun onUnityAdsFailedToLoad(
@@ -66,20 +67,17 @@ object UnityAdsManager {
                 message: String?
             ) {
                 Log.e(TAG, "Rewarded ad failed to load: $error - $message")
+                rewardedAdLoaded = false
             }
         })
     }
 
-    /**
-     * Shows a rewarded ad. [onReward] is called ONLY if the user watches the ad to completion —
-     * this is where you should grant coins/currency. [onFailedOrSkipped] covers every other
-     * outcome (not loaded yet, user skipped, network error) — do not grant a reward there.
-     */
     fun showRewardedAd(
         activity: Activity,
         onReward: () -> Unit,
         onFailedOrSkipped: (() -> Unit)? = null
     ) {
+        rewardedAdLoaded = false
         UnityAds.show(
             activity,
             REWARDED_PLACEMENT_ID,
@@ -106,16 +104,13 @@ object UnityAdsManager {
                     if (state == com.unity3d.ads.UnityAds.UnityAdsShowCompletionState.COMPLETED) {
                         onReward()
                     } else {
-                        // SKIPPED or unknown -> no reward
                         onFailedOrSkipped?.invoke()
                     }
-                    // Pre-load the next one immediately
                     loadRewardedAd()
                 }
             }
         )
     }
 
-    fun isRewardedAdReady(): Boolean =
-        UnityAds.getPlacementState(REWARDED_PLACEMENT_ID) == UnityAds.PlacementState.READY
+    fun isRewardedAdReady(): Boolean = rewardedAdLoaded
 }
