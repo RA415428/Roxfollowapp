@@ -244,6 +244,7 @@ export const AdModal: React.FC<AdModalProps> = ({
           </>
         ) : (
         <>
+        <div className="text-[10px] font-mono text-red-400 bg-black/40 rounded p-1 break-all">DEBUG: Capacitor={String(git push(window as any).Capacitor)} isNative={String(isNativeApp())} platform={(window as any).Capacitor?.getPlatform?.() ?? 'n/a'}</div>
         {/* Rewarded Video Screen Player Simulation */}
         <div className="relative w-full aspect-video rounded-2xl bg-gradient-to-br from-indigo-950 via-slate-900 to-purple-950 border border-slate-800 overflow-hidden flex flex-col justify-between p-4 shadow-inner">
           {/* Top Video Overlay Info */}
