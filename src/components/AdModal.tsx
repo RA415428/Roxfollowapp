@@ -90,11 +90,13 @@ export const AdModal: React.FC<AdModalProps> = ({
 
     if (isNativeApp()) {
       setAdMode('checking');
+      alert('DEBUG isNativeApp true, checking ad');
       requestNativeRewardedAd().then((requested) => {
         if (cancelled) return;
         setAdMode(requested ? 'native' : 'failed');
       });
     } else {
+      alert('DEBUG isNativeApp false, Capacitor=' + (typeof (window as any).Capacitor));
       // Not running inside the packaged Android app (e.g. testing in a browser tab)
       setAdMode('fallback');
     }
