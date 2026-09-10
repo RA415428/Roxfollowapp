@@ -802,8 +802,7 @@ export function App() {
     localStorage.setItem('roxyefollow_watch_ad_cooldown', (now + 10000).toString());
 
     // Instantly credit reward coins (+50 Coins) to user's wallet without opening any ad
-    const coinsToEarn = adminConfig.ads?.coinsPerRewardAd || 50;
-    handleRewardEarned(coinsToEarn, true);
+    setShowAdModal(true);
   };
 
   const handleResetDailyAdLimits = async () => {
