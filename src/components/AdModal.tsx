@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Sparkles, CheckCircle2, ShieldCheck, Zap, Clock, X, ArrowRight, Play, Film } from 'lucide-react';
+import { Sparkles, CheckCircle2, ShieldCheck, Zap, Clock, X, ArrowRight, Play, Film, Loader2, AlertTriangle } from 'lucide-react';
 import { clearAdSession, getActiveAdSession, saveAdSession } from '../utils/adSessionManager';
+import { isNativeApp, requestNativeRewardedAd } from '../utils/nativeAds';
 
 interface AdModalProps {
   isOpen: boolean;
@@ -24,6 +25,10 @@ export const AdModal: React.FC<AdModalProps> = ({
   const [rewardClaimed, setRewardClaimed] = useState<boolean>(false);
   const [timeLeft, setTimeLeft] = useState<number>(TOTAL_DURATION);
   const [showExitWarning, setShowExitWarning] = useState<boolean>(false);
+  // 'checking' = deciding which ad path to use, 'native' = real Unity ad is showing,
+  // 'fallback' = not running in the native app (dev/browser preview) — old timer UI,
+  // 'failed' = native app but no Unity ad was ready right now.
+  const [adMode, setAdMode] = useState<'checking' | 'native' | 'fallback' | 'failed'>('checking');
   
   const hasClaimedRef = useRef<boolean>(false);
   const endTimeRef = useRef<number>(Date.now() + TOTAL_DURATION * 1000);
@@ -71,14 +76,37 @@ export const AdModal: React.FC<AdModalProps> = ({
     }
   }, [isOpen, handleClaimReward]);
 
-  // Timer initialization & wall-clock countdown tracking
+  // Decide which ad path to take: real Unity ad (native app) vs dev/browser fallback.
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      setAdMode('checking');
+      return;
+    }
 
+    let cancelled = false;
     hasClaimedRef.current = false;
     setRewardClaimed(false);
     setShowExitWarning(false);
 
+    if (isNativeApp()) {
+      setAdMode('checking');
+      requestNativeRewardedAd().then((requested) => {
+        if (cancelled) return;
+        setAdMode(requested ? 'native' : 'failed');
+      });
+    } else {
+      // Not running inside the packaged Android app (e.g. testing in a browser tab)
+      setAdMode('fallback');
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
+
+  // Timer initialization & wall-clock countdown tracking (fallback mode only)
+  useEffect(() => {
+    if (!isOpen || adMode !== 'fallback') return;
     // Read active ad session timestamp or create one
     const activeSession = getActiveAdSession();
     let startTime = activeSession?.startTime;
@@ -119,22 +147,32 @@ export const AdModal: React.FC<AdModalProps> = ({
       window.removeEventListener('pageshow', handleAppFocus);
       document.removeEventListener('visibilitychange', handleAppFocus);
     };
-  }, [isOpen, rewardCoins, handleClaimReward, syncRemainingTime]);
+  }, [isOpen, adMode, rewardCoins, handleClaimReward, syncRemainingTime]);
 
   if (!isOpen) return null;
 
   const progressPercent = Math.min(100, Math.max(0, ((TOTAL_DURATION - timeLeft) / TOTAL_DURATION) * 100));
 
   const handleCloseAttempt = () => {
-    if (rewardClaimed || timeLeft <= 0) {
+    if (rewardClaimed) {
       if (!hasClaimedRef.current) {
         handleClaimReward();
       } else {
         onClose();
       }
-    } else {
-      setShowExitWarning(true);
+      return;
     }
+    if (adMode === 'fallback') {
+      if (timeLeft <= 0) {
+        handleClaimReward();
+      } else {
+        setShowExitWarning(true);
+      }
+      return;
+    }
+    // 'checking' / 'native' / 'failed' — the Unity ad (if any) runs independently
+    // of this overlay, so it's safe to just dismiss.
+    onClose();
   };
 
   return (
@@ -168,6 +206,44 @@ export const AdModal: React.FC<AdModalProps> = ({
 
       {/* Main Video Ad Screen Card */}
       <div className="relative z-10 my-auto w-full max-w-md mx-auto bg-slate-900/95 rounded-3xl border border-amber-500/30 p-4 sm:p-5 text-center space-y-4 shadow-2xl backdrop-blur-md">
+        {(adMode === 'checking' || adMode === 'native') && !rewardClaimed ? (
+          <>
+            <div className="relative w-full aspect-video rounded-2xl bg-gradient-to-br from-indigo-950 via-slate-900 to-purple-950 border border-slate-800 overflow-hidden flex flex-col items-center justify-center gap-3">
+              <Loader2 className="w-10 h-10 text-amber-400 animate-spin" />
+              <p className="text-sm font-bold text-slate-200">
+                {adMode === 'checking' ? 'Loading ad…' : 'Watch the ad to earn your reward'}
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <h2 className="text-lg sm:text-xl font-black text-white">
+                {adMode === 'checking' ? 'Getting your ad ready…' : 'Ad is playing'}
+              </h2>
+              <p className="text-xs text-slate-300 px-2 font-medium leading-tight">
+                Watch the full video to earn +{rewardCoins} Coins. Skipping early won't credit the reward.
+              </p>
+            </div>
+          </>
+        ) : adMode === 'failed' && !rewardClaimed ? (
+          <>
+            <div className="relative w-full aspect-video rounded-2xl bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 overflow-hidden flex flex-col items-center justify-center gap-3">
+              <AlertTriangle className="w-10 h-10 text-amber-400" />
+            </div>
+            <div className="space-y-1.5">
+              <h2 className="text-lg sm:text-xl font-black text-white">No Ad Available Right Now</h2>
+              <p className="text-xs text-slate-300 px-2 font-medium leading-tight">
+                Please try again in a moment.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-full py-3.5 bg-slate-800 hover:bg-slate-700 text-white font-black text-sm rounded-2xl transition-all active:scale-95"
+            >
+              Close
+            </button>
+          </>
+        ) : (
+        <>
         {/* Rewarded Video Screen Player Simulation */}
         <div className="relative w-full aspect-video rounded-2xl bg-gradient-to-br from-indigo-950 via-slate-900 to-purple-950 border border-slate-800 overflow-hidden flex flex-col justify-between p-4 shadow-inner">
           {/* Top Video Overlay Info */}
@@ -279,6 +355,8 @@ export const AdModal: React.FC<AdModalProps> = ({
             <span>Verified Secure Adsterra Stream • Instant Coins Delivery</span>
           </div>
         </div>
+        </>
+        )}
       </div>
     </div>
   );
