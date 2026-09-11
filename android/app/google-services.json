@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "941069618650",
+    "project_id": "roxyefollow",
+    "storage_bucket": "roxyefollow.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:941069618650:android:bd277f049d13924d8444e3",
+        "android_client_info": {
+          "package_name": "com.roxfollow.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCkc-5aLvwNj2CMY48rcL_C6iS6Z0BQ7jQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
