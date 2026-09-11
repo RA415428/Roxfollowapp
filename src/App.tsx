@@ -788,7 +788,8 @@ export function App() {
       return;
     }
 
-    // Enforce 10-second wait between ad clicks
+    // Enforce a short wait between ad clicks (cooldown is (re)started once an ad
+    // finishes playing — see AdModal's onRewardClaim below — not at click time).
     const now = Date.now();
     const cooldownExpiryStr = localStorage.getItem('roxyefollow_watch_ad_cooldown');
     const cooldownExpiry = cooldownExpiryStr ? parseInt(cooldownExpiryStr, 10) : 0;
@@ -798,8 +799,6 @@ export function App() {
       return;
     }
 
-    // Set 10s cooldown in local storage
-    localStorage.setItem('roxyefollow_watch_ad_cooldown', (now + 10000).toString());
 
     // Instantly credit reward coins (+50 Coins) to user's wallet without opening any ad
     setShowAdModal(true);
@@ -1317,7 +1316,7 @@ export function App() {
         <AdModal
           isOpen={showAdModal}
           onClose={() => setShowAdModal(false)}
-          onRewardClaim={handleRewardEarned}
+          onRewardClaim={(coins) => { handleRewardEarned(coins, true); localStorage.setItem('roxyefollow_watch_ad_cooldown', (Date.now() + 5000).toString()); }}
           rewardCoins={adminConfig.ads.coinsPerRewardAd}
           adProvider={adminConfig.ads.provider}
           adUnitId={adminConfig.ads.rewardedAdId}

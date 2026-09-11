@@ -90,13 +90,11 @@ export const AdModal: React.FC<AdModalProps> = ({
 
     if (isNativeApp()) {
       setAdMode('checking');
-      alert('DEBUG isNativeApp true, checking ad');
       requestNativeRewardedAd().then((requested) => {
         if (cancelled) return;
         setAdMode(requested ? 'native' : 'failed');
       });
     } else {
-      alert('DEBUG isNativeApp false, Capacitor=' + (typeof (window as any).Capacitor));
       // Not running inside the packaged Android app (e.g. testing in a browser tab)
       setAdMode('fallback');
     }
@@ -150,6 +148,15 @@ export const AdModal: React.FC<AdModalProps> = ({
       document.removeEventListener('visibilitychange', handleAppFocus);
     };
   }, [isOpen, adMode, rewardCoins, handleClaimReward, syncRemainingTime]);
+
+  // If a native ad genuinely fails to be ready (rare race condition — CoinsScreen already
+  // checks readiness before opening this modal), just close silently instead of showing
+  // any extra screen, since the inline "please wait" message in CoinsScreen already covers this.
+  useEffect(() => {
+    if (adMode === 'failed') {
+      onClose();
+    }
+  }, [adMode, onClose]);
 
   if (!isOpen) return null;
 
@@ -225,28 +232,10 @@ export const AdModal: React.FC<AdModalProps> = ({
               </p>
             </div>
           </>
-        ) : adMode === 'failed' && !rewardClaimed ? (
-          <>
-            <div className="relative w-full aspect-video rounded-2xl bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 overflow-hidden flex flex-col items-center justify-center gap-3">
-              <AlertTriangle className="w-10 h-10 text-amber-400" />
-            </div>
-            <div className="space-y-1.5">
-              <h2 className="text-lg sm:text-xl font-black text-white">No Ad Available Right Now</h2>
-              <p className="text-xs text-slate-300 px-2 font-medium leading-tight">
-                Please try again in a moment.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="w-full py-3.5 bg-slate-800 hover:bg-slate-700 text-white font-black text-sm rounded-2xl transition-all active:scale-95"
-            >
-              Close
-            </button>
-          </>
+        ) : adMode === 'failed' ? (
+          <div className="py-10" />
         ) : (
         <>
-        <div className="text-[10px] font-mono text-red-400 bg-black/40 rounded p-1 break-all">DEBUG: Capacitor={Boolean((window as any).Capacitor)} isNative={String(isNativeApp())} platform={(window as any).Capacitor?.getPlatform?.() ?? 'n/a'}</div>
         {/* Rewarded Video Screen Player Simulation */}
         <div className="relative w-full aspect-video rounded-2xl bg-gradient-to-br from-indigo-950 via-slate-900 to-purple-950 border border-slate-800 overflow-hidden flex flex-col justify-between p-4 shadow-inner">
           {/* Top Video Overlay Info */}

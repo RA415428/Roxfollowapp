@@ -24,3 +24,14 @@ export async function requestNativeRewardedAd(): Promise<boolean> {
     return false;
   }
 }
+
+export async function isNativeAdReady(): Promise<boolean> {
+  if (!isNativeApp()) return true;
+  try {
+    const { available } = await UnityAdsNative.isAvailable();
+    return available;
+  } catch (e) {
+    console.warn('Unity native ad bridge error:', e);
+    return false;
+  }
+}

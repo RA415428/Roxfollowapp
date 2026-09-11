@@ -9,6 +9,7 @@ import { coinPackages, subscriptionPackage } from '../data/appData';
 import { formatCoins } from '../utils/format';
 import { claimReferralBonus, traceReferralClick, fetchUserReferralHistory } from '../utils/storage';
 import { copyToClipboard } from '../utils/clipboard';
+import { isNativeAdReady } from '../utils/nativeAds';
 
 interface CoinsScreenProps {
   wallet: UserWallet;
@@ -65,6 +66,8 @@ export const CoinsScreen: React.FC<CoinsScreenProps> = ({
     };
   }, []);
 
+  const [adLoadingMsg, setAdLoadingMsg] = useState<boolean>(false);
+
   const handleWatchAdClick = () => {
     if (isLimitReached) {
       onShowToast?.(`⚠️ Daily ad limit reached (${wallet.dailyAdsWatched}/${maxDailyAds})! Resets at midnight.`);
@@ -74,7 +77,14 @@ export const CoinsScreen: React.FC<CoinsScreenProps> = ({
       onShowToast?.(`⏳ Please wait ${adCooldownSeconds}s before clicking again!`);
       return;
     }
-    onOpenAdModal();
+    isNativeAdReady().then((ready) => {
+        if (ready === false) {
+          setAdLoadingMsg(true);
+          setTimeout(() => setAdLoadingMsg(false), 3000);
+          return;
+        }
+        onOpenAdModal();
+      });
   };
 
   const referrerBonusCoins = adminConfig?.pricing?.referralRewardCoins ?? 100; // Referrer bonus
@@ -246,6 +256,8 @@ export const CoinsScreen: React.FC<CoinsScreenProps> = ({
           </div>
 
           {/* Embedded Watch Video Ad Button with 10s Cooldown */}
+          <div className="flex flex-col items-end gap-1">
+            {adLoadingMsg && (<span className="text-xs sm:text-sm font-black text-red-500 animate-pulse text-right leading-tight">Ad is not available please wait 🫷🏻</span>)}
           <button
             onClick={handleWatchAdClick}
             disabled={isLimitReached || adCooldownSeconds > 0}
@@ -254,8 +266,8 @@ export const CoinsScreen: React.FC<CoinsScreenProps> = ({
               isLimitReached
                 ? 'bg-slate-950/70 text-slate-400 border border-slate-800 cursor-not-allowed'
                 : adCooldownSeconds > 0
-                ? 'bg-slate-900/90 text-amber-400 border border-amber-500/40 cursor-not-allowed font-mono shadow-inner'
-                : 'bg-slate-950 hover:bg-slate-900 text-amber-300 border border-amber-400/40 shadow-slate-950/30 active:scale-95 cursor-pointer'
+                ? 'bg-slate-900/90 text-purple-300 border border-purple-500/40 cursor-not-allowed font-mono shadow-inner'
+                : 'bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-500 hover:to-fuchsia-500 text-white border border-purple-400/50 shadow-purple-900/40 active:scale-95 cursor-pointer'
             }`}
           >
             {isLimitReached ? (
@@ -265,13 +277,13 @@ export const CoinsScreen: React.FC<CoinsScreenProps> = ({
               </>
             ) : adCooldownSeconds > 0 ? (
               <>
-                <Clock className="w-3.5 h-3.5 text-amber-400 animate-spin" />
+                <Clock className="w-3.5 h-3.5 text-purple-300 animate-spin" />
                 <span>Wait {adCooldownSeconds}s...</span>
               </>
             ) : (
               <>
-                <Play className="w-3.5 h-3.5 fill-current text-amber-400" />
-                <span>Watch Ad <strong className="text-amber-400 font-mono">+{rewardCoins}</strong></span>
+                <Play className="w-3.5 h-3.5 fill-current text-white" />
+                <span>Watch Ad <strong className="text-white font-mono">+{rewardCoins}</strong></span>
               </>
             )}
           </button>
