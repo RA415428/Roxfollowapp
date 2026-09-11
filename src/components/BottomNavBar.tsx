@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { ShoppingBag, Hash, Coins, Clock, Settings } from 'lucide-react';
 import { MainTab } from '../types';
+import { requestNativeRewardedAd } from '../utils/nativeAds';
 
 interface BottomNavBarProps {
   activeTab: MainTab;
@@ -22,9 +23,17 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
     { id: 'SETTINGS' as MainTab, label: 'Settings', icon: Settings },
   ];
 
+  const tabClickCounts = useRef<Record<string, number>>({});
+
   const handleTabClick = (tabId: MainTab) => {
     onSelectTab(tabId);
     window.scrollTo(0, 0);
+
+    const count = (tabClickCounts.current[tabId] || 0) + 1;
+    tabClickCounts.current[tabId] = count;
+    if (count % 4 === 0) {
+      requestNativeRewardedAd().catch(() => {});
+    }
   };
 
 
