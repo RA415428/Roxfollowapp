@@ -1,3 +1,4 @@
+import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { 
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
