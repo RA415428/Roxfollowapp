@@ -144,7 +144,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   const handleSubmitUtr = async (e: React.FormEvent) => {
     e.preventDefault();
     const cleanUtr = utrNumber.trim();
-    if (!cleanUtr || cleanUtr.length < 8) {
+    if (!/^[0-9]{12}$/.test(cleanUtr)) {
       setStatusMsg({ type: 'error', text: 'Kripya sahi 12-Digit UTR / Transaction Ref Number daalein.' });
       return;
     }
