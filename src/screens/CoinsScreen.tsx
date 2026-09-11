@@ -287,6 +287,7 @@ export const CoinsScreen: React.FC<CoinsScreenProps> = ({
               </>
             )}
           </button>
+          </div>
         </div>
 
         {/* Status subrow */}
