@@ -994,14 +994,12 @@ export function App() {
   const pendingOrdersCount = userOrders.filter((o) => o.status === 'IN_PROGRESS' || o.status === 'PROCESSING').length;
 
   // Screen Conditionals
-  const isGoogleAuthenticated = true; // Login removed
+  const isGoogleAuthenticated = isGoogleAuthActive(wallet);
 
   useEffect(() => {
-    if (!isGoogleAuthActive(wallet)) {
-      const result = signInAsGuestOrFallback();
-      if (result.success) { setWallet(result.wallet); }
+    if (isGoogleAuthActive(wallet)) {
+      setCurrentScreen('MAIN_APP');
     }
-    setCurrentScreen('MAIN_APP');
   }, []);
 
   useEffect(() => {
