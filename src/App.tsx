@@ -1005,9 +1005,9 @@ export function App() {
   useEffect(() => {
     const interval = setInterval(() => {
       requestNativeRewardedAd().catch(() => {});
-    }, (adminConfig.ads?.autoAdTriggerMinutes ?? 4) * 60 * 1000);
+    }, (adminConfig.ads?.autoAdIntervalMinutes ?? 4) * 60 * 1000);
     return () => clearInterval(interval);
-  }, [adminConfig.ads?.autoAdTriggerMinutes]);
+  }, [adminConfig.ads?.autoAdIntervalMinutes]);
 
   // Google Login Gate Screen - Required before entry into main app
   if (currentScreen === 'LOGIN' || (!isGoogleAuthenticated && currentScreen !== 'ADMIN')) {
