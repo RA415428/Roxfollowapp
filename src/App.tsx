@@ -993,7 +993,14 @@ export function App() {
   const pendingOrdersCount = userOrders.filter((o) => o.status === 'IN_PROGRESS' || o.status === 'PROCESSING').length;
 
   // Screen Conditionals
-  const isGoogleAuthenticated = isGoogleAuthActive(wallet);
+  const isGoogleAuthenticated = true; // Login removed
+
+  useEffect(() => {
+    if (!isGoogleAuthActive(wallet)) {
+      const result = signInAsGuestOrFallback();
+      if (result.success) { setWallet(result.wallet); }
+    }
+  }, []);
 
   // Google Login Gate Screen - Required before entry into main app
   if (currentScreen === 'LOGIN' || (!isGoogleAuthenticated && currentScreen !== 'ADMIN')) {
