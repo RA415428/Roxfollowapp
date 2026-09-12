@@ -64,6 +64,7 @@ import { isUpdateRequired, getClientAppVersion } from './utils/versionCheck';
 import { CURRENT_APP_VERSION } from './types';
 import { 
   isGoogleAuthActive, 
+  signInAsGuestOrFallback,
   onAuthStatusChange, 
   checkGoogleRedirectResult, 
   handleExternalVerifiedUser,
