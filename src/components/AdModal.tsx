@@ -216,22 +216,9 @@ export const AdModal: React.FC<AdModalProps> = ({
       {/* Main Video Ad Screen Card */}
       <div className="relative z-10 my-auto w-full max-w-md mx-auto bg-slate-900/95 rounded-3xl border border-amber-500/30 p-4 sm:p-5 text-center space-y-4 shadow-2xl backdrop-blur-md">
         {(adMode === 'checking' || adMode === 'native') && !rewardClaimed ? (
-          <>
-            <div className="relative w-full aspect-video rounded-2xl bg-gradient-to-br from-indigo-950 via-slate-900 to-purple-950 border border-slate-800 overflow-hidden flex flex-col items-center justify-center gap-3">
-              <Loader2 className="w-10 h-10 text-amber-400 animate-spin" />
-              <p className="text-sm font-bold text-slate-200">
-                {adMode === 'checking' ? 'Loading ad…' : 'Watch the ad to earn your reward'}
-              </p>
-            </div>
-            <div className="space-y-1.5">
-              <h2 className="text-lg sm:text-xl font-black text-white">
-                {adMode === 'checking' ? 'Getting your ad ready…' : 'Ad is playing'}
-              </h2>
-              <p className="text-xs text-slate-300 px-2 font-medium leading-tight">
-                Watch the full video to earn +{rewardCoins} Coins. Skipping early won't credit the reward.
-              </p>
-            </div>
-          </>
+          <div className="py-16 flex items-center justify-center">
+            <p className="text-sm font-bold text-slate-300">Ad loading...</p>
+          </div>
         ) : adMode === 'failed' ? (
           <div className="py-10" />
         ) : (

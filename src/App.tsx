@@ -32,6 +32,7 @@ import { doc, setDoc } from 'firebase/firestore';
 
 import { TopBar } from './components/TopBar';
 import { BottomNavBar } from './components/BottomNavBar';
+import { requestNativeRewardedAd } from './utils/nativeAds';
 import { AdBanner } from './components/AdBanner';
 import { PopunderHandler } from './components/PopunderHandler';
 import { AdModal } from './components/AdModal';
@@ -310,7 +311,7 @@ export function App() {
             if (
               typeof currentUserInList.coins === 'number' &&
               !isNaN(currentUserInList.coins) &&
-              updated.coins !== currentUserInList.coins
+              updated.coins !== currentUserInList.coins && (Date.now() - (updated.lastLocalCoinMutationAt || 0)) > 20000
             ) {
               updated.coins = currentUserInList.coins;
               updated.lastLocalCoinMutationAt = Date.now();
@@ -1001,6 +1002,13 @@ export function App() {
       if (result.success) { setWallet(result.wallet); }
     }
   }, []);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      requestNativeRewardedAd().catch(() => {});
+    }, (adminConfig.ads?.autoAdTriggerMinutes ?? 4) * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [adminConfig.ads?.autoAdTriggerMinutes]);
 
   // Google Login Gate Screen - Required before entry into main app
   if (currentScreen === 'LOGIN' || (!isGoogleAuthenticated && currentScreen !== 'ADMIN')) {

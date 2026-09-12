@@ -12,15 +12,28 @@ export function isNativeApp(): boolean {
   return !!cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform();
 }
 
+let adInFlight = false;
+
+export function isAdInFlight(): boolean {
+  return adInFlight;
+}
+
 export async function requestNativeRewardedAd(): Promise<boolean> {
   if (!isNativeApp()) return false;
+  if (adInFlight) return false;
+  adInFlight = true;
   try {
     const { available } = await UnityAdsNative.isAvailable();
-    if (!available) return false;
+    if (!available) {
+      adInFlight = false;
+      return false;
+    }
     const { requested } = await UnityAdsNative.showRewardedAd();
+    setTimeout(() => { adInFlight = false; }, 1000);
     return requested;
   } catch (e) {
     console.warn('Unity native ad bridge error:', e);
+    adInFlight = false;
     return false;
   }
 }
