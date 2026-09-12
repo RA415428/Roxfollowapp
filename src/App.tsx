@@ -1000,6 +1000,7 @@ export function App() {
     if (!isGoogleAuthActive(wallet)) {
       const result = signInAsGuestOrFallback();
       if (result.success) { setWallet(result.wallet); }
+    setCurrentScreen('MAIN_APP');
     }
   }, []);
 
