@@ -85,7 +85,7 @@ export function App() {
 
   // Always require Admin Password by default until entered in session
   const [isAdminUnlocked, setIsAdminUnlocked] = useState<boolean>(false);
-  const [currentScreen, setCurrentScreen] = useState<AppScreen>('LOGIN');
+  const [currentScreen, setCurrentScreen] = useState<AppScreen>(() => isGoogleAuthActive(loadUserWallet()) ? 'MAIN_APP' : 'LOGIN');
 
   // Atmosphere & Theme Preference (Pink Monsoon Theme by default with live rain)
   const [themeMode, setThemeMode] = useState<'pink-monsoon' | 'classic-dark' | 'light'>(() => {
