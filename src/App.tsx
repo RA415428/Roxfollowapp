@@ -28,7 +28,7 @@ import {
 import { DEFAULT_ADMIN_CONFIG } from './utils/defaultAdminConfig';
 import { submitOrderToSmmApi } from './utils/smmService';
 import { db } from './lib/firebase';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
 
 import { TopBar } from './components/TopBar';
 import { BottomNavBar } from './components/BottomNavBar';
@@ -821,17 +821,14 @@ export function App() {
     handleUpdateWallet(updatedWallet);
 
     try {
-      await fetch(getApiUrl('/api/users/reset-daily-ads'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+      const usersSnap = await getDocs(collection(db, 'users'));
+      const batch = writeBatch(db);
+      usersSnap.forEach((userDoc) => {
+        batch.update(userDoc.ref, { dailyAdsWatched: 0 });
       });
-      fetchServerUsers().then((uList) => {
-        if (uList && Array.isArray(uList)) {
-          setUsers(uList);
-        }
-      });
-    } catch {
-      // ignore
+      await batch.commit();
+    } catch (err) {
+      console.warn('Failed to reset all users on Firestore:', err);
     }
 
     handleShowToast('✅ All users daily ad limits reset to 0!');

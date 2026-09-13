@@ -1,5 +1,25 @@
 import { Order, SmmApiSettings } from '../types';
 import { getApiUrl } from './storage';
+import { CapacitorHttp } from '@capacitor/core';
+import { isNativeApp } from './nativeAds';
+
+async function smmFormPost(url: string, formData: URLSearchParams): Promise<any> {
+  if (isNativeApp()) {
+    const response = await CapacitorHttp.request({
+      url,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      data: formData.toString()
+    });
+    return response.data;
+  }
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: formData.toString()
+  });
+  return res.json();
+}
 
 export interface SmmApiResponse {
   success: boolean;
@@ -120,15 +140,7 @@ export async function submitOrderToSmmApi(
     formData.append('link', order.targetUrl);
     formData.append('quantity', order.quantity.toString());
 
-    const res = await fetch(smmSettings.apiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: formData.toString()
-    });
-
-    const data = await res.json();
+    const data = await smmFormPost(smmSettings.apiUrl, formData);
     if (data && (data.order !== undefined || data.order_id !== undefined)) {
       return {
         success: true,
@@ -203,13 +215,7 @@ export async function testSmmApiConnection(apiUrl: string, apiKey: string): Prom
     formData.append('key', apiKey || 'test');
     formData.append('action', 'balance');
 
-    const res = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: formData.toString()
-    });
-
-    const data = await res.json();
+    const data = await smmFormPost(apiUrl, formData);
     if (data && data.balance !== undefined) {
       return {
         success: true,
