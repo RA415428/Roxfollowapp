@@ -42,8 +42,8 @@ jobs:
 
     - name: Verify Icon File
       run: |
-        file android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
-        md5sum android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+        file android/app/src/main/res/mipmap-xxxhdpi/app_icon.png
+        md5sum android/app/src/main/res/mipmap-xxxhdpi/app_icon.png
 
     - name: Build Android Debug APK
       working-directory: android
