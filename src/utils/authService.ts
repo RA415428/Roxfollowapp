@@ -1306,79 +1306,20 @@ export function isAndroidWebView(): boolean {
  * Supports Popup and automatic Redirect fallback for WebViews.
  */
 export async function signInWithGoogle(customWelcomeBonus?: number): Promise<GoogleAuthResult> {
-  const isWebView = isAndroidWebView();
-
-  // In Android WebViews (like Appcreator24), window popups and cross-window sessionStorage
-  // are blocked or don't communicate state, causing 'auth/missing-initial-state'.
-  // Using signInWithRedirect provides seamless in-app navigation.
-  if (isWebView) {
-    try {
-      console.log('📱 Android WebView detected: starting signInWithRedirect...');
-      await signInWithRedirect(auth, googleProvider);
-      return {
-        success: false,
-        error: 'Redirecting to Google Sign-In...'
-      };
-    } catch (redirectErr: any) {
-      console.warn('WebView signInWithRedirect error:', redirectErr);
-    }
-  }
-
   try {
-    const result = await signInWithPopup(auth, googleProvider);
-    if (!result.user) {
+    const result = await FirebaseAuthentication.signInWithGoogle();
+    const firebaseUser = auth.currentUser;
+    if (firebaseUser === null) {
       return { success: false, error: 'Google sign-in failed. No user profile returned.' };
     }
-    return await handleFirebaseAuthUser(result.user, customWelcomeBonus);
+    return await handleFirebaseAuthUser(firebaseUser, customWelcomeBonus);
   } catch (err: any) {
-    // Gracefully handle user closing the popup window without printing scary console warnings
-    if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
-      return {
-        success: false,
-        error: 'Google Sign-In popup was closed.'
-      };
+    if (err?.message && err.message.toLowerCase().includes('cancel')) {
+      return { success: false, error: 'Google Sign-In was cancelled.' };
     }
-
-    // If popup was blocked, network failed, or environment unsupported, attempt redirect flow
-    if (
-      err?.code === 'auth/popup-blocked' || 
-      err?.code === 'auth/operation-not-supported-in-this-environment' ||
-      err?.code === 'auth/missing-initial-state' ||
-      err?.code === 'auth/network-request-failed'
-    ) {
-      try {
-        console.log('Attempting signInWithRedirect fallback for Google auth...');
-        await signInWithRedirect(auth, googleProvider);
-        return {
-          success: false,
-          error: 'Redirecting to Google Sign-In...'
-        };
-      } catch (redirectErr: any) {
-        console.warn('Redirect error:', redirectErr);
-      }
-    }
-
-    console.warn('Google sign-in notice:', err?.message || err);
-
-    let errMsg = 'Google sign-in failed. Please try again.';
-    if (err?.code === 'auth/popup-closed-by-user' || err?.code === 'auth/cancelled-popup-request') {
-      errMsg = 'Sign-in window was closed. Tap "Continue with Google" to complete login.';
-    } else if (err?.code === 'auth/popup-blocked') {
-      errMsg = 'Popup blocked by browser. Please allow popups or use Google sign-in again.';
-    } else if (err?.code === 'auth/network-request-failed') {
-      errMsg = 'Network error during Google sign-in. Please check your internet connection.';
-    } else if (err?.code === 'auth/missing-initial-state') {
-      errMsg = 'WebView session state missing. Redirecting to Google Login...';
-    } else if (err?.message) {
-      errMsg = err.message;
-    }
-    return {
-      success: false,
-      error: errMsg
-    };
+    return { success: false, error: err?.message || 'Google sign-in failed.' };
   }
 }
-
 export function isUserAuthenticated(wallet?: UserWallet | null): boolean {
   if (!wallet) return false;
   const hasMemberId = Boolean(wallet.memberId && wallet.memberId !== '100001');

@@ -12,7 +12,20 @@
           "package_name": "com.roxfollow.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "941069618650-serfr5v324tpnsrao3krae20offff328.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.roxfollow.app",
+            "certificate_hash": "8e2cba616e4aaf64c4ee461ffba8fe26151b6ec2"
+          }
+        },
+        {
+          "client_id": "941069618650-2elpmcs81e10h3fq0igr3o4vgug7qauq.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyCkc-5aLvwNj2CMY48rcL_C6iS6Z0BQ7jQ"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "941069618650-2elpmcs81e10h3fq0igr3o4vgug7qauq.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }
