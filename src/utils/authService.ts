@@ -1307,6 +1307,7 @@ export function isAndroidWebView(): boolean {
  */
 export async function signInWithGoogle(customWelcomeBonus?: number): Promise<GoogleAuthResult> {
   try {
+    await FirebaseAuthentication.signOut().catch(() => {});
     const result = await FirebaseAuthentication.signInWithGoogle();
     const firebaseUser = auth.currentUser;
     if (firebaseUser === null) {
