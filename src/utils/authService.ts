@@ -876,7 +876,7 @@ export async function requestPasswordResetOTP(email: string): Promise<{ success:
 
     // Call Backend API to generate and dispatch OTP
     try {
-      const response = await fetch('/api/auth/send-otp', {
+      const response = await fetch(getApiUrl('/api/auth/send-otp'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: normalizedEmail })
