@@ -51,6 +51,7 @@ export async function updateUserOnFirestore(
  * Works seamlessly in both web browsers and native APK/WebView apps on any mobile device.
  */
 export function getApiUrl(path: string): string {
+  const DEFAULT_BACKEND = 'https://roxfollowapp-1.onrender.com';
   const cleanPath = path.startsWith('/') ? path : '/' + path;
 
   // 1. Check for custom backend URL saved in localStorage
@@ -64,7 +65,15 @@ export function getApiUrl(path: string): string {
     // ignore
   }
 
-  // 2. In browser / WebView environment, use window.location.origin directly
+  // 2. Native Android app — always use the real deployed backend
+  try {
+    const cap = (window as any).Capacitor;
+    if (cap && typeof cap.isNativePlatform === 'function' && cap.isNativePlatform()) {
+      return `${DEFAULT_BACKEND}${cleanPath}`;
+    }
+  } catch {}
+
+  // 3. In browser / WebView environment, use window.location.origin directly
   if (typeof window !== 'undefined' && window.location && window.location.origin) {
     const origin = window.location.origin;
     if (origin.startsWith('http://') || origin.startsWith('https://')) {

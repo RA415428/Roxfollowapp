@@ -293,6 +293,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             <span>+{welcomeBonusCoins} Free Coins on Sign Up</span>
           </div>
 
+          <button type="button" onClick={handleGoogleSignIn} disabled={isLoading} className="w-full flex items-center justify-center gap-2 bg-white text-slate-900 font-bold py-3 rounded-xl mb-3 border border-slate-700">
+            <span>Sign in with Google</span>
+          </button>
+
           <div className="flex items-center gap-2 mb-3">
             <div className="h-px bg-slate-800 flex-1" />
             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">or email</span>
