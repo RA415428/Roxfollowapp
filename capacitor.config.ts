@@ -6,6 +6,12 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   android: {
     allowMixedContent: true
+  },
+  plugins: {
+    FirebaseAuthentication: {
+      skipNativeAuth: false,
+      providers: ['google.com']
+    }
   }
 };
 
