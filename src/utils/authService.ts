@@ -883,6 +883,9 @@ export async function requestPasswordResetOTP(email: string): Promise<{ success:
         body: JSON.stringify({ email: normalizedEmail })
       });
       const data = await response.json();
+      if (data.success && data.emailSent === false) {
+        return { success: false, error: 'Email delivery failed. The backend could not send the email — please check server mail configuration.' };
+      }
       if (data.success) {
         return {
           success: true,
@@ -950,6 +953,9 @@ export async function verifyOTPCode(email: string, otpCode: string): Promise<{ s
         body: JSON.stringify({ email: normalizedEmail, otp: cleanCode })
       });
       const data = await response.json();
+      if (data.success && data.emailSent === false) {
+        return { success: false, error: 'Email delivery failed. The backend could not send the email — please check server mail configuration.' };
+      }
       if (data.success) {
         return { success: true, message: 'Code verified successfully.' };
       } else if (data.error) {
@@ -1011,6 +1017,9 @@ export async function verifyResetOTPAndSetPassword(
         body: JSON.stringify({ email: normalizedEmail, otp: cleanCode, newPassword })
       });
       const data = await response.json();
+      if (data.success && data.emailSent === false) {
+        return { success: false, error: 'Email delivery failed. The backend could not send the email — please check server mail configuration.' };
+      }
       if (data.success) {
         // Also update Firestore email_accounts for synchronization
         const safeDocKey = normalizedEmail.replace(/[^a-z0-9]/g, '_');
