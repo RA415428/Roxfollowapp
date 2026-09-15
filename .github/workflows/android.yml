@@ -24,9 +24,6 @@ jobs:
       with:
         node-version: 22
 
-    - name: Set up Android SDK
-      uses: android-actions/setup-android@v3
-
     - name: Decode Fixed Debug Keystore
       run: |
         if [ -f android/app/debug.keystore.base64 ]; then
