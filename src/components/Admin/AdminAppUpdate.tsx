@@ -48,7 +48,7 @@ export const AdminAppUpdate: React.FC<AdminAppUpdateProps> = ({
       '🛠️ Super Smooth Android WebView & Performance',
       '🔒 Enhanced Wallet Security & Fast Coin Credit'
     ],
-    forceUpdate: true,
+    forceUpdate: false,
     lastPublishedAt: 0
   };
 
@@ -208,7 +208,7 @@ export const AdminAppUpdate: React.FC<AdminAppUpdateProps> = ({
     const updatedSettings: AppUpdateSettings = {
       ...settings,
       enabled: forceEnable,
-      forceUpdate: true,
+      forceUpdate: forceEnable,
       lastPublishedAt: Date.now()
     };
 
