@@ -1219,6 +1219,35 @@ if (typeof window !== 'undefined') {
 
 export const GOOGLE_WEB_CLIENT_ID = '593591785644-eckg25u8lein7ggpl2qi7scnnmd0vp0m.apps.googleusercontent.com';
 
+// Google One Tap / Identity Services (GIS) client configuration
+export const GOOGLE_ONE_TAP_CONFIG = {
+  client_id: GOOGLE_WEB_CLIENT_ID,
+  auto_select: false,
+  callback: 'handleGoogleOneTapGlobal',
+  context: 'signin',
+  ux_mode: 'popup',
+  login_uri: window.location.origin + '/',
+  native_name: 'app',
+  use_fedcm: false
+};
+
+// Add Google One Tap script dynamically
+if (typeof window !== 'undefined') {
+  const existing = document.querySelector('script[src="https://accounts.google.com/gsi/client"]');
+  if (!existing) {
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    document.head.appendChild(script);
+    (window as any).googleOneTapInitialized = false;
+
+    script.addEventListener('load', () => {
+      (window as any).googleOneTapInitialized = true;
+    });
+  }
+}
+
 /**
  * Handles Google One Tap / Google Identity Services (GIS) Credential Response
  */
@@ -1331,6 +1360,76 @@ export async function signInWithGoogle(customWelcomeBonus?: number): Promise<Goo
       return { success: false, error: 'Google Sign-In was cancelled.' };
     }
     return { success: false, error: err?.message || 'Google sign-in failed.' };
+  }
+}
+
+// Enhanced Google One Tap Authentication for mobile WebViews
+export async function signInWithGoogleOneTap(customWelcomeBonus?: number): Promise<GoogleAuthResult> {
+  try {
+    if (typeof window === 'undefined') {
+      return { success: false, error: 'Google One Tap not available in non-browser environment' };
+    }
+
+    // Wait for Google Identity Services to be loaded
+    await new Promise<void>((resolve, reject) => {
+      const maxWait = 5000; // 5 seconds max wait
+      const startTime = Date.now();
+
+      const check = () => {
+        if ((window as any).google && (window as any).google.accounts && (window as any).google.accounts.id) {
+          resolve();
+        } else if (Date.now() - startTime > maxWait) {
+          reject(new Error('Google Identity Services failed to load'));
+        } else {
+          setTimeout(check, 100);
+        }
+      };
+      check();
+    });
+
+    const handleResponse = async (response: any) => {
+      if (!response || !response.credential) {
+        return { success: false, error: 'Google One Tap credential missing' };
+      }
+
+      // Use the Google ID Token to sign in with Firebase
+      const { signInWithCredential } = await import('firebase/auth');
+      const cred = await signInWithCredential(auth, googleProvider.credential(response.credential));
+      if (!cred.user) {
+        return { success: false, error: 'Google authentication failed' };
+      }
+      return await handleFirebaseAuthUser(cred.user, customWelcomeBonus);
+    };
+
+    return new Promise((resolve) => {
+      // Clean up any existing callback
+      delete window.handleGoogleOneTapGlobal;
+      window.handleGoogleOneTapGlobal = async (response: any) => {
+        try {
+          const result = await handleResponse(response);
+          resolve(result);
+        } catch (error) {
+          resolve({ success: false, error: 'Google One Tap authentication error: ' + (error as Error).message });
+        }
+      };
+
+      (window as any).google.accounts.id.initialize({
+        client_id: GOOGLE_WEB_CLIENT_ID,
+        callback: window.handleGoogleOneTapGlobal,
+        auto_select: false,
+        ux_mode: 'popup',
+        itp_support: true
+      });
+
+      (window as any).google.accounts.id.prompt((notification: any) => {
+        if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+          console.log('Google One Tap prompt not displayed:', notification.getNotDisplayedReason());
+        }
+      });
+    });
+
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Google One Tap sign-in failed' };
   }
 }
 export function isUserAuthenticated(wallet?: UserWallet | null): boolean {

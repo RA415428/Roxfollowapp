@@ -1,6 +1,6 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { initializeFirestore, getFirestore, Firestore, setLogLevel, memoryLocalCache } from 'firebase/firestore';
-import { getAuth, Auth } from 'firebase/auth';
+import { getAuth, Auth, GoogleAuthProvider } from 'firebase/auth';
 import firebaseConfigJson from '../../firebase-applet-config.json';
 
 // Suppress harmless offline/timeout logs from Cloud Firestore
@@ -39,6 +39,14 @@ try {
 }
 
 const auth: Auth = getAuth(app);
+
+// Enable Google Auth Provider for Capacitor Firebase
+const googleProvider = new GoogleAuthProvider();
+googleProvider.addScope('profile');
+googleProvider.addScope('email');
+googleProvider.setCustomParameters({ prompt: 'select_account' });
+
+export { googleProvider }; // Export for use in authService
 
 export enum OperationType {
   CREATE = 'create',
