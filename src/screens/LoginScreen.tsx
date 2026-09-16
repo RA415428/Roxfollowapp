@@ -23,6 +23,7 @@ import {
   signInWithEmail,
   signUpWithEmail,
   requestPasswordResetOTP,
+  sendPasswordResetLink,
   verifyOTPCode,
   verifyResetOTPAndSetPassword,
   resetPasswordWithEmail,
