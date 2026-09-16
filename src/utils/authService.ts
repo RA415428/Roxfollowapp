@@ -1,3 +1,5 @@
+
+const CLOUD_BACKEND_URL = 'https://ais-pre-l72l5hitdvz2jryudn72qo-609197389972.asia-southeast1.run.app';
 import { getApiUrl } from './storage';
 import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { 
