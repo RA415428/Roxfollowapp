@@ -324,7 +324,13 @@ export async function fetchServerAdminConfig(): Promise<AdminConfig | null> {
           ...firestoreConfig,
           pricing: { ...DEFAULT_ADMIN_CONFIG.pricing, ...(firestoreConfig.pricing || {}) },
           ads: { ...DEFAULT_ADMIN_CONFIG.ads, ...(firestoreConfig.ads || {}) },
-          appUpdate: { ...(DEFAULT_ADMIN_CONFIG.appUpdate!), ...(firestoreConfig.appUpdate || {}) },
+          appUpdate: {
+            ...(DEFAULT_ADMIN_CONFIG.appUpdate!),
+            ...(firestoreConfig.appUpdate || {}),
+            ...(localConfig.appUpdate?.enabled === false
+              ? { enabled: false, forceUpdate: false }
+              : {})
+          },
           coinPackages: firestoreConfig.coinPackages?.length ? firestoreConfig.coinPackages : DEFAULT_ADMIN_CONFIG.coinPackages,
           subscriptionPackage: firestoreConfig.subscriptionPackage || DEFAULT_ADMIN_CONFIG.subscriptionPackage
         };

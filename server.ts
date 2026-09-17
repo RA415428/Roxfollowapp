@@ -1211,35 +1211,10 @@ app.post('/api/referral/claim', (req, res) => {
     // 3. Anti-Fraud: Check if Referrer User exists
     let referrerUser = globalUsersMap[cleanReferrerId];
     if (!referrerUser) {
-      if (/^\d{5,8}$/.test(cleanReferrerId)) {
-        referrerUser = {
-          id: `usr_${cleanReferrerId}`,
-          userId: `#${cleanReferrerId}`,
-          memberId: cleanReferrerId,
-          referralCode: `ROX${cleanReferrerId}`,
-          name: `User #${cleanReferrerId}`,
-          coins: 0,
-          ordersCount: 0,
-          status: 'ACTIVE',
-          joinedDate: 'Today',
-          isOnline: true,
-          lastActive: 'Just now',
-          deviceType: 'Android App (APK)',
-          currentScreen: 'App View',
-          totalCoinsSpent: 0,
-          location: 'India',
-          totalReferralsCount: 0,
-          totalReferralCoinsEarned: 0,
-          updatedAt: Date.now(),
-          createdAt: Date.now()
-        };
-        globalUsersMap[cleanReferrerId] = referrerUser;
-      } else {
-        return res.status(400).json({ 
-          success: false, 
-          error: `❌ Invalid Referral Code! Member #${cleanReferrerId} app par registered nahi hai.` 
-        });
-      }
+      return res.status(400).json({
+        success: false,
+        error: `❌ Invalid Referral Code! Member #${cleanReferrerId} app par registered nahi hai.`
+      });
     }
 
     // 4. Anti-Fraud: Check Device Fingerprint match between referrer & receiver
@@ -1275,8 +1250,9 @@ app.post('/api/referral/claim', (req, res) => {
     }
 
     // Reward amounts (Default: Referrer +100 coins, Referred New User +50 coins)
-    const rewardCoinsToReferrer = globalAdminConfig.pricing?.referralRewardCoins ?? 100;
-    const rewardCoinsToReferred = 50;
+    const referralReward = globalAdminConfig.pricing?.referralRewardCoins ?? 100;
+    const rewardCoinsToReferrer = referralReward;
+    const rewardCoinsToReferred = referralReward;
     const now = Date.now();
     const nowTimeStr = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     const nowDateFormatted = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -1570,8 +1546,9 @@ app.post('/api/referral/admin/review', (req, res) => {
       ref.rewardedAt = now;
       ref.note = adminNote || 'Approved manually by administrator';
 
-      const rewardReferrer = ref.rewardCoinsReferrer || 10;
-      const rewardReferred = ref.rewardCoinsReferred || 50;
+      const referralReward = globalAdminConfig.pricing?.referralRewardCoins ?? 100;
+      const rewardReferrer = ref.rewardCoinsReferrer || referralReward;
+      const rewardReferred = ref.rewardCoinsReferred || referralReward;
 
       // Disburse coins to Referrer
       const referrerUser = globalUsersMap[ref.referrerUid];
