@@ -97,6 +97,7 @@ let globalPaymentRequestsMap: Record<string, any> = {};
 let globalConnectedInstagramAccounts: Record<string, any> = {};
 let globalReferralTracesMap: Record<string, { referrerMemberId: string; timestamp: number; ip: string }> = {};
 let globalReferralsMap: Record<string, any> = {};
+const activeReferralClaims = new Set<string>();
 let globalCoinTransactions: any[] = [];
 let globalReferralCodesMap: Record<string, any> = {};
 let globalMemberCounter = 100003;
@@ -1163,6 +1164,7 @@ function getOrCreateReferralCode(memberId: string): string {
 
 // 5e. Production-Ready, Fraud-Resistant Referral Claim Endpoint
 app.post('/api/referral/claim', (req, res) => {
+  let referralIdForLock: string | undefined;
   try {
     const { referrerMemberId, newMemberId, referralCode, deviceFingerprint } = req.body || {};
     
@@ -1198,6 +1200,7 @@ app.post('/api/referral/claim', (req, res) => {
     // 2. Anti-Fraud: Disabled Referral Code check
     const expectedCodeROX = `ROX${cleanReferrerId}`;
     const expectedCodeRX = `RX${cleanReferrerId}`;
+    const expectedCode = expectedCodeROX;
     if (
       (globalReferralCodesMap[expectedCodeROX] && globalReferralCodesMap[expectedCodeROX].active === false) ||
       (globalReferralCodesMap[expectedCodeRX] && globalReferralCodesMap[expectedCodeRX].active === false)
@@ -1228,10 +1231,21 @@ app.post('/api/referral/claim', (req, res) => {
 
     // 5. Anti-Fraud: Deterministic Referral Record ID
     const referralId = `ref_${cleanReferrerId}_${cleanNewId}`;
+    referralIdForLock = referralId;
+
+    if (activeReferralClaims.has(referralId)) {
+      return res.status(409).json({
+        success: false,
+        error: '❌ Is referral claim ki processing already chal rahi hai. Kripya thodi der baad dobara check karein.'
+      });
+    }
+
+    activeReferralClaims.add(referralId);
     const existingRef = globalReferralsMap[referralId];
 
     // Already completed check
     if (existingRef && (existingRef.status === 'REWARDED' || existingRef.status === 'completed')) {
+      activeReferralClaims.delete(referralId);
       return res.json({
         success: true,
         alreadyClaimed: true,
@@ -1243,6 +1257,7 @@ app.post('/api/referral/claim', (req, res) => {
 
     // Check if new user already claimed ANY referral bonus
     if (newUser && newUser.referralClaimed) {
+      activeReferralClaims.delete(referralId);
       return res.status(400).json({ 
         success: false, 
         error: '❌ Is device/account par pehle se referral welcome bonus claim ho chuka hai.' 
@@ -1250,7 +1265,7 @@ app.post('/api/referral/claim', (req, res) => {
     }
 
     // Reward amounts (Default: Referrer +100 coins, Referred New User +50 coins)
-    const referralReward = globalAdminConfig.pricing?.referralRewardCoins ?? 100;
+    const referralReward = globalAdminConfig.pricing?.referralRewardCoins ?? 1000;
     const rewardCoinsToReferrer = referralReward;
     const rewardCoinsToReferred = referralReward;
     const now = Date.now();
@@ -1264,7 +1279,7 @@ app.post('/api/referral/claim', (req, res) => {
     );
 
     const isSuspicious = recentFromSameIp.length >= 8;
-    const initialStatus = isSuspicious ? 'REVIEW' : 'completed';
+    const initialStatus = isSuspicious ? 'REVIEW' : 'REWARDED';
     const fraudStatus = isSuspicious ? 'SUSPICIOUS' : 'CLEAN';
 
     // Record Referral Document
@@ -1294,6 +1309,7 @@ app.post('/api/referral/claim', (req, res) => {
     // If suspicious, queue for admin review without distributing coins immediately
     if (isSuspicious) {
       savePersistedState();
+      activeReferralClaims.delete(referralId);
       return res.json({
         success: true,
         underReview: true,
@@ -1397,6 +1413,8 @@ app.post('/api/referral/claim', (req, res) => {
 
     savePersistedState();
 
+    activeReferralClaims.delete(referralId);
+
     res.json({
       success: true,
       message: `🎉 Referral Reward Success! Bhejne wale dost (#${cleanReferrerId}) ko +${rewardCoinsToReferrer} coins aur aapko +${rewardCoinsToReferred} welcome coins mil gaye!`,
@@ -1407,6 +1425,7 @@ app.post('/api/referral/claim', (req, res) => {
       referralRecord
     });
   } catch (err: any) {
+    if (referralIdForLock) activeReferralClaims.delete(referralIdForLock);
     res.status(500).json({ success: false, error: err.message || 'Failed to process referral claim' });
   }
 });
@@ -1430,7 +1449,7 @@ app.get('/api/referral/my-history/:memberId', (req, res) => {
           referredName: referredUser?.name || `User #${r.referredUid}`,
           status: r.status,
           fraudStatus: r.fraudStatus,
-          coinsEarned: r.status === 'REWARDED' ? (r.rewardCoinsReferrer || 10) : 0,
+          coinsEarned: r.status === 'REWARDED' ? (r.rewardCoinsReferrer || (globalAdminConfig.pricing?.referralRewardCoins ?? 1000)) : 0,
           dateFormatted: new Date(r.createdAt || Date.now()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
         };
       });
@@ -1441,7 +1460,7 @@ app.get('/api/referral/my-history/:memberId', (req, res) => {
       .slice(0, 30);
 
     const totalSuccessful = userReferrals.filter((r: any) => r.status === 'REWARDED').length;
-    const totalCoinsEarned = user?.totalReferralCoinsEarned || (totalSuccessful * 10);
+    const totalCoinsEarned = user?.totalReferralCoinsEarned || (totalSuccessful * (globalAdminConfig.pricing?.referralRewardCoins ?? 1000));
 
     res.json({
       success: true,
@@ -1449,8 +1468,8 @@ app.get('/api/referral/my-history/:memberId', (req, res) => {
       referralCode,
       totalSuccessfulReferrals: totalSuccessful,
       totalReferralCoinsEarned: totalCoinsEarned,
-      referralRewardReferrer: globalAdminConfig.pricing?.referralRewardCoins ?? 10,
-      referralRewardReferred: 50,
+      referralRewardReferrer: globalAdminConfig.pricing?.referralRewardCoins ?? 100,
+      referralRewardReferred: globalAdminConfig.pricing?.referralRewardCoins ?? 100,
       history: userReferrals,
       transactions: userTransactions
     });
@@ -1470,7 +1489,7 @@ app.get('/api/referral/admin/list', (req, res) => {
 
     const totalCoinsDistributed = allRefs.reduce((acc: number, r: any) => {
       if (r.status === 'REWARDED') {
-        return acc + (r.rewardCoinsReferrer || 10) + (r.rewardCoinsReferred || 50);
+        return acc + (r.rewardCoinsReferrer || (globalAdminConfig.pricing?.referralRewardCoins ?? 1000)) + (r.rewardCoinsReferred || (globalAdminConfig.pricing?.referralRewardCoins ?? 1000));
       }
       return acc;
     }, 0);
@@ -1483,7 +1502,7 @@ app.get('/api/referral/admin/list', (req, res) => {
           referrersCountMap[r.referrerUid] = { count: 0, coins: 0 };
         }
         referrersCountMap[r.referrerUid].count += 1;
-        referrersCountMap[r.referrerUid].coins += (r.rewardCoinsReferrer || 10);
+        referrersCountMap[r.referrerUid].coins += (r.rewardCoinsReferrer || (globalAdminConfig.pricing?.referralRewardCoins ?? 1000));
       }
     });
 
@@ -1546,7 +1565,7 @@ app.post('/api/referral/admin/review', (req, res) => {
       ref.rewardedAt = now;
       ref.note = adminNote || 'Approved manually by administrator';
 
-      const referralReward = globalAdminConfig.pricing?.referralRewardCoins ?? 100;
+      const referralReward = globalAdminConfig.pricing?.referralRewardCoins ?? 1000;
       const rewardReferrer = ref.rewardCoinsReferrer || referralReward;
       const rewardReferred = ref.rewardCoinsReferred || referralReward;
 

@@ -151,35 +151,8 @@ export async function processNewUserReferral(
       const rewardReferred = 50; // New user gets +50 referral bonus
       const rewardReferrer = adminCfg?.pricing?.referralRewardCoins ?? 100; // Referrer gets +100
 
-      // Update referrer in Firestore directly
-      const curCoins = typeof referrerData.coins === 'number' ? referrerData.coins : 0;
-      const curCount = typeof referrerData.totalReferralsCount === 'number' ? referrerData.totalReferralsCount : 0;
-      const curEarned = typeof referrerData.totalReferralCoinsEarned === 'number' ? referrerData.totalReferralCoinsEarned : 0;
-
-      await setDoc(referrerDocSnap.ref, {
-        coins: curCoins + rewardReferrer,
-        totalReferralsCount: curCount + 1,
-        totalSuccessfulReferrals: curCount + 1,
-        totalReferralCoinsEarned: curEarned + rewardReferrer,
-        coinsUpdatedByAdmin: true,
-        updatedAt: Date.now()
-      }, { merge: true }).catch(() => {});
-
-      // Record in referrals collection
-      const refRecordId = `ref_${cleanReferrerId}_${newMemberId}`;
-      await setDoc(doc(db, 'referrals', refRecordId), {
-        id: refRecordId,
-        referrerId: `#${cleanReferrerId}`,
-        referredUserId: `#${newMemberId}`,
-        referrerUid: cleanReferrerId,
-        referredUid: newMemberId,
-        referralCode: `ROX${cleanReferrerId}`,
-        rewardCoinsReferrer: rewardReferrer,
-        rewardCoinsReferred: rewardReferred,
-        status: 'REWARDED',
-        createdAt: Date.now()
-      }, { merge: true }).catch(() => {});
-
+      // Referral rewards are processed only by the server API.
+      // Do not credit Firestore directly here, otherwise rewards can be duplicated.
       // Notify Express backend API
       try {
         fetch('/api/referral/claim', {
@@ -886,7 +859,7 @@ export async function requestPasswordResetOTP(email: string): Promise<{ success:
       });
       const data = await response.json();
       if (data.success && data.emailSent === false) {
-        return { success: false, error: 'Email delivery failed. The backend could not send the email — please check server mail configuration.' };
+        return { success: false, message: 'Email delivery failed. The backend could not send the email — please check server mail configuration.' };
       }
       if (data.success) {
         return {
@@ -956,7 +929,7 @@ export async function verifyOTPCode(email: string, otpCode: string): Promise<{ s
       });
       const data = await response.json();
       if (data.success && data.emailSent === false) {
-        return { success: false, error: 'Email delivery failed. The backend could not send the email — please check server mail configuration.' };
+        return { success: false, message: 'Email delivery failed. The backend could not send the email — please check server mail configuration.' };
       }
       if (data.success) {
         return { success: true, message: 'Code verified successfully.' };
@@ -1020,7 +993,7 @@ export async function verifyResetOTPAndSetPassword(
       });
       const data = await response.json();
       if (data.success && data.emailSent === false) {
-        return { success: false, error: 'Email delivery failed. The backend could not send the email — please check server mail configuration.' };
+        return { success: false, message: 'Email delivery failed. The backend could not send the email — please check server mail configuration.' };
       }
       if (data.success) {
         // Also update Firestore email_accounts for synchronization
@@ -1217,6 +1190,15 @@ if (typeof window !== 'undefined') {
   };
 }
 
+export async function sendPasswordResetLink(email: string): Promise<{ success: boolean; message: string; error?: string }> {
+  try {
+    await sendPasswordResetEmail(auth, email);
+    return { success: true, message: 'Password reset email sent.' };
+  } catch (error: any) {
+    return { success: false, message: error?.message || 'Failed to send password reset email.', error: error?.message };
+  }
+}
+
 export const GOOGLE_WEB_CLIENT_ID = '593591785644-eckg25u8lein7ggpl2qi7scnnmd0vp0m.apps.googleusercontent.com';
 
 // Google One Tap / Identity Services (GIS) client configuration
@@ -1394,7 +1376,7 @@ export async function signInWithGoogleOneTap(customWelcomeBonus?: number): Promi
 
       // Use the Google ID Token to sign in with Firebase
       const { signInWithCredential } = await import('firebase/auth');
-      const cred = await signInWithCredential(auth, googleProvider.credential(response.credential));
+      const cred = await signInWithCredential(auth, GoogleAuthProvider.credential(response.credential));
       if (!cred.user) {
         return { success: false, error: 'Google authentication failed' };
       }
@@ -1403,8 +1385,8 @@ export async function signInWithGoogleOneTap(customWelcomeBonus?: number): Promi
 
     return new Promise((resolve) => {
       // Clean up any existing callback
-      delete window.handleGoogleOneTapGlobal;
-      window.handleGoogleOneTapGlobal = async (response: any) => {
+      delete (window as any).handleGoogleOneTapGlobal;
+      (window as any).handleGoogleOneTapGlobal = async (response: any) => {
         try {
           const result = await handleResponse(response);
           resolve(result);
@@ -1415,7 +1397,7 @@ export async function signInWithGoogleOneTap(customWelcomeBonus?: number): Promi
 
       (window as any).google.accounts.id.initialize({
         client_id: GOOGLE_WEB_CLIENT_ID,
-        callback: window.handleGoogleOneTapGlobal,
+        callback: (window as any).handleGoogleOneTapGlobal,
         auto_select: false,
         ux_mode: 'popup',
         itp_support: true
