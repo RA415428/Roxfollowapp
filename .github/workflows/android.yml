@@ -60,6 +60,19 @@ jobs:
         chmod +x gradlew
         ./gradlew clean assembleDebug --no-daemon
 
+    - name: Verify Final APK Icon
+      working-directory: android
+      run: |
+        APK=app/build/outputs/apk/debug/app-debug.apk
+        echo "===== APK FILE ====="
+        ls -lh "$APK"
+        echo "===== APK ICON REFERENCES ====="
+        aapt dump badging "$APK" | grep -E 'application-icon|application-label'
+        echo "===== PACKAGED ICON FILES ====="
+        unzip -l "$APK" | grep -E 'mipmap|app_icon|ic_launcher' | head -100
+        echo "===== PACKAGED APP ICON HASHES ====="
+        unzip -p "$APK" 'res/*/app_icon.png' 2>/dev/null | sha256sum || true
+
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
