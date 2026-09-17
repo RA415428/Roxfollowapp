@@ -42,6 +42,9 @@ jobs:
           cp resources/icon.png android/app/src/main/res/mipmap-$d/rox_icon.png
           cp resources/icon.png android/app/src/main/res/mipmap-$d/rox_icon_round.png
         done
+        cp resources/icon.png android/app/src/main/res/drawable/app_icon.png
+        cp resources/icon.png android/app/src/main/res/drawable/ic_launcher.png
+        cp resources/icon.png android/app/src/main/res/drawable/ic_launcher_round.png
 
     - name: Verify Icon File
       run: |
