@@ -43,11 +43,8 @@ jobs:
           cp resources/icon.png android/app/src/main/res/mipmap-$d/ic_launcher_round.png
           cp resources/icon.png android/app/src/main/res/mipmap-$d/app_icon.png
           cp resources/icon.png android/app/src/main/res/mipmap-$d/app_icon_round.png
+          cp resources/icon.png android/app/src/main/res/mipmap-$d/app_icon_foreground.png
         done
-        rm -f android/app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml
-        rm -f android/app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml
-        rm -f android/app/src/main/res/mipmap-anydpi-v26/app_icon.xml
-        rm -f android/app/src/main/res/mipmap-anydpi-v26/app_icon_round.xml
 
     - name: Verify Icon File
       run: |
