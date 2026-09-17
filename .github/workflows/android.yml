@@ -37,19 +37,13 @@ jobs:
         npm run build
         npx cap sync android
 
-        # Restore Rox Follow launcher icons AFTER Capacitor sync
-        for d in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
-          cp resources/icon.png android/app/src/main/res/mipmap-$d/rox_icon.png
-          cp resources/icon.png android/app/src/main/res/mipmap-$d/rox_icon_round.png
-        done
+        # Restore Rox Follow icon AFTER Capacitor sync
         cp resources/icon.png android/app/src/main/res/drawable/app_icon.png
-        cp resources/icon.png android/app/src/main/res/drawable/ic_launcher.png
-        cp resources/icon.png android/app/src/main/res/drawable/ic_launcher_round.png
 
     - name: Verify Icon File
       run: |
-        file android/app/src/main/res/mipmap-xxxhdpi/rox_icon.png
-        md5sum android/app/src/main/res/mipmap-xxxhdpi/rox_icon.png
+        file android/app/src/main/res/drawable/app_icon.png
+        sha256sum resources/icon.png android/app/src/main/res/drawable/app_icon.png
 
     - name: Build Android Debug APK
       working-directory: android
