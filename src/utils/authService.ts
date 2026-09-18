@@ -837,44 +837,34 @@ export async function requestPasswordResetOTP(email: string): Promise<{ success:
       return { success: false, message: 'Please enter a valid email address.' };
     }
 
-    const safeDocKey = normalizedEmail.replace(/[^a-z0-9]/g, '_');
-    const accountDocRef = doc(db, 'email_accounts', safeDocKey);
-    const accountSnap = await getDoc(accountDocRef);
+    const response = await fetch(getApiUrl('/api/auth/send-otp'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: normalizedEmail })
+    });
 
-    const isOwnerUser = normalizedEmail === 'nayakhardayal4@gmail.com';
+    const data = await response.json();
 
-    if (!accountSnap.exists() && !isOwnerUser) {
+    if (!response.ok || !data.success) {
       return {
         success: false,
-        message: 'This email address is not registered in the app. Please switch to "Create Account" first.'
-      };
-    }
-
-    const result = await sendPasswordResetLink(normalizedEmail);
-
-    if (!result.success) {
-      return {
-        success: false,
-        message: result.message || 'Failed to send password reset email. Please try again.'
+        message: data.error || data.message || 'Failed to send verification code.'
       };
     }
 
     return {
       success: true,
-      message: 'Password reset link sent to your email. Please check your inbox and spam folder.'
+      message: data.message || 'A 6-digit verification code has been sent to your email.'
     };
   } catch (err: any) {
-    console.error('Request password reset error:', err);
+    console.error('Request password reset OTP error:', err);
     return {
       success: false,
-      message: err?.message || 'Failed to send password reset email. Please try again.'
+      message: err?.message || 'Failed to send verification code. Please try again.'
     };
   }
 }
 
-/**
- * Verify 6-digit OTP code (Step 2 Verification)
- */
 export async function verifyOTPCode(email: string, otp: string): Promise<{ success: boolean; message: string }> {
   try {
     const normalizedEmail = email.trim().toLowerCase();
@@ -946,7 +936,7 @@ export async function verifyResetOTPAndSetPassword(
 
     // Call Backend endpoint to securely reset password
     try {
-      const response = await fetch('/api/auth/verify-reset-password', {
+      const response = await fetch(getApiUrl('/api/auth/verify-reset-password'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: normalizedEmail, otp: cleanCode, newPassword })

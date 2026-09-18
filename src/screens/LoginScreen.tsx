@@ -23,6 +23,8 @@ import {
   signInWithEmail,
   signUpWithEmail,
   requestPasswordResetOTP,
+  verifyOTPCode,
+  verifyResetOTPAndSetPassword,
   sendPasswordResetLink,
   resetPasswordWithEmail,
   signInWithGoogle,
@@ -117,7 +119,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
       if (res.success) {
         setSuccessMessage(res.message);
-        if (onShowToast) onShowToast('📩 Password reset link sent to your email!');
+        setForgotStep(2);
+        setOtpCode('');
+        setOtpTimer(300);
+        setResendCooldown(30);
+        if (onShowToast) onShowToast('📩 6-digit OTP sent to your email!');
       } else {
         setErrorMessage(res.message || 'Failed to send password reset email.');
       }
@@ -131,8 +137,71 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (authMode === 'FORGOT_PASSWORD') {
-      await handleSendOtp();
-      return;
+      if (forgotStep === 1) {
+        await handleSendOtp();
+        return;
+      }
+
+      if (forgotStep === 2) {
+        if (otpCode.length !== 6) {
+          setErrorMessage('Please enter the 6-digit verification code.');
+          return;
+        }
+
+        setIsLoading(true);
+        setErrorMessage(null);
+        setSuccessMessage(null);
+
+        try {
+          const res = await verifyOTPCode(email, otpCode);
+          if (res.success) {
+            setForgotStep(3);
+            setSuccessMessage('Code verified. Please enter your new password.');
+          } else {
+            setErrorMessage(res.message || 'Invalid or expired verification code.');
+          }
+        } catch (err: any) {
+          setErrorMessage(err?.message || 'Unable to verify the code.');
+        } finally {
+          setIsLoading(false);
+        }
+        return;
+      }
+
+      if (forgotStep === 3) {
+        if (newPassword.length < 6) {
+          setErrorMessage('New password must be at least 6 characters long.');
+          return;
+        }
+
+        if (newPassword !== confirmPassword) {
+          setErrorMessage('Passwords do not match.');
+          return;
+        }
+
+        setIsLoading(true);
+        setErrorMessage(null);
+        setSuccessMessage(null);
+
+        try {
+          const res = await verifyResetOTPAndSetPassword(email, otpCode, newPassword);
+          if (res.success) {
+            setSuccessMessage('Password reset successfully. You can now sign in.');
+            setPassword('');
+            setForgotStep(1);
+            setOtpCode('');
+            setNewPassword('');
+            setConfirmPassword('');
+          } else {
+            setErrorMessage(res.message || 'Failed to reset password.');
+          }
+        } catch (err: any) {
+          setErrorMessage(err?.message || 'Unable to reset password.');
+        } finally {
+          setIsLoading(false);
+        }
+        return;
+      }
     }
 
     setIsLoading(true);
@@ -269,7 +338,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           <p className="text-[11px] text-slate-400 mb-3 leading-relaxed max-w-xs mx-auto">
             {authMode === 'SIGN_IN' && 'Enter your email and password to sign in.'}
             {authMode === 'SIGN_UP' && 'Register with email to get free bonus coins immediately!'}
-            {authMode === 'FORGOT_PASSWORD' && 'Enter your registered email and we will send you a password reset link.'}
+            {authMode === 'FORGOT_PASSWORD' && 'Enter your registered email and we will send you a 6-digit verification code.'}
           </p>
 
           {/* Alert Boxes */}
@@ -516,7 +585,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     {authMode === 'SIGN_IN' && 'Sign In'}
                     {authMode === 'SIGN_UP' && 'Create Account'}
                     {authMode === 'FORGOT_PASSWORD' && (
-                      'Send Password Reset Link'
+                      'Send OTP'
                     )}
                   </span>
                   {authMode === 'FORGOT_PASSWORD' && forgotStep === 1 ? (
