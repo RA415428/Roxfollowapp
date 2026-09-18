@@ -20,7 +20,7 @@ let globalOtpsMap: Record<string, { otp: string; expiresAt: number; createdAt: n
 // Helper to configure Nodemailer Transporter
 function getMailTransporter() {
   const user = process.env.GMAIL_USER || process.env.SMTP_USER || 'nayakhardayal4@gmail.com';
-  const pass = process.env.GMAIL_APP_PASS || process.env.SMTP_PASS || 'qhggcpswuenfhzzy';
+  const pass = process.env.GMAIL_APP_PASS || process.env.SMTP_PASS || '';
 
   if (user && pass) {
     if (process.env.SMTP_HOST) {
