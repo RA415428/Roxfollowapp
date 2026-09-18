@@ -832,6 +832,7 @@ export async function signInWithEmail(
 export async function requestPasswordResetOTP(email: string): Promise<{ success: boolean; message: string; previewCode?: string }> {
   try {
     const normalizedEmail = email.trim().toLowerCase();
+
     if (!normalizedEmail || !normalizedEmail.includes('@')) {
       return { success: false, message: 'Please enter a valid email address.' };
     }
@@ -842,7 +843,6 @@ export async function requestPasswordResetOTP(email: string): Promise<{ success:
 
     const isOwnerUser = normalizedEmail === 'nayakhardayal4@gmail.com';
 
-    // 🔒 STRICT CHECK: Block unregistered emails from requesting OTP
     if (!accountSnap.exists() && !isOwnerUser) {
       return {
         success: false,
@@ -850,57 +850,41 @@ export async function requestPasswordResetOTP(email: string): Promise<{ success:
       };
     }
 
-    // Call Backend API to generate and dispatch OTP
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+
     try {
       const response = await fetch(getApiUrl('/api/auth/send-otp'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: normalizedEmail })
+        body: JSON.stringify({ email: normalizedEmail }),
+        signal: controller.signal
       });
+
       const data = await response.json();
-      if (data.success && data.emailSent === false) {
-        return { success: false, message: 'Email delivery failed. The backend could not send the email — please check server mail configuration.' };
-      }
-      if (data.success) {
+
+      if (!response.ok || !data.success) {
         return {
-          success: true,
-          message: data.message || `A 6-digit verification code has been dispatched to ${normalizedEmail}.`,
-          previewCode: normalizedEmail === 'nayakhardayal4@gmail.com' ? data.otp : undefined
+          success: false,
+          message: data.error || 'Failed to send verification code. Please try again.'
         };
       }
-    } catch (apiErr) {
-      console.warn('Backend send-otp error, continuing fallback:', apiErr);
+
+      return {
+        success: true,
+        message: data.message || 'A 6-digit verification code has been sent to your email.',
+        previewCode: isOwnerUser ? data.otp : undefined
+      };
+    } finally {
+      clearTimeout(timeout);
     }
-
-    // Generate 6-digit random Verification OTP
-    const generatedOTP = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes validity
-
-    const otpDocRef = doc(db, 'password_reset_otps', safeDocKey);
-    await setDoc(otpDocRef, {
-      email: normalizedEmail,
-      code: generatedOTP,
-      createdAt: Date.now(),
-      expiresAt: expiresAt,
-      used: false,
-      ipAttempt: 'verified_session'
-    });
-
-    // In parallel dispatch official Firebase Password Reset Email if available
-    try {
-      await sendPasswordResetEmail(auth, normalizedEmail);
-    } catch {}
-
-    return {
-      success: true,
-      message: `A 6-digit verification code has been dispatched to ${normalizedEmail}. Code is valid for 5 minutes.`,
-      previewCode: isOwnerUser ? generatedOTP : undefined
-    };
   } catch (err: any) {
     console.error('Request OTP error:', err);
     return {
       success: false,
-      message: err.message || 'Failed to send verification code. Please try again.'
+      message: err?.name === 'AbortError'
+        ? 'Email service timed out. Please try again.'
+        : (err?.message || 'Failed to send verification code. Please try again.')
     };
   }
 }
@@ -908,63 +892,56 @@ export async function requestPasswordResetOTP(email: string): Promise<{ success:
 /**
  * Verify 6-digit OTP code (Step 2 Verification)
  */
-export async function verifyOTPCode(email: string, otpCode: string): Promise<{ success: boolean; message: string }> {
+export async function verifyOTPCode(email: string, otp: string): Promise<{ success: boolean; message: string }> {
   try {
     const normalizedEmail = email.trim().toLowerCase();
-    const cleanCode = otpCode.trim();
+    const cleanOtp = otp.trim();
 
-    if (!normalizedEmail || !normalizedEmail.includes('@')) {
-      return { success: false, message: 'Invalid email address.' };
-    }
-    if (!cleanCode || cleanCode.length !== 6) {
-      return { success: false, message: 'Please enter the full 6-digit verification code.' };
+    if (!normalizedEmail || !cleanOtp) {
+      return { success: false, message: 'Email and OTP are required.' };
     }
 
-    // Check backend endpoint
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+
     try {
-      const response = await fetch('/api/auth/verify-otp', {
+      const response = await fetch(getApiUrl('/api/auth/verify-otp'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: normalizedEmail, otp: cleanCode })
+        body: JSON.stringify({
+          email: normalizedEmail,
+          otp: cleanOtp
+        }),
+        signal: controller.signal
       });
+
       const data = await response.json();
-      if (data.success && data.emailSent === false) {
-        return { success: false, message: 'Email delivery failed. The backend could not send the email — please check server mail configuration.' };
+
+      if (!response.ok || !data.success) {
+        return {
+          success: false,
+          message: data.error || 'Invalid or expired verification code.'
+        };
       }
-      if (data.success) {
-        return { success: true, message: 'Code verified successfully.' };
-      } else if (data.error) {
-        return { success: false, message: data.error };
-      }
-    } catch (apiErr) {
-      console.warn('Backend verify-otp error, checking Firestore:', apiErr);
-    }
 
-    const safeDocKey = normalizedEmail.replace(/[^a-z0-9]/g, '_');
-    const otpDocRef = doc(db, 'password_reset_otps', safeDocKey);
-    const otpSnap = await getDoc(otpDocRef);
-
-    if (!otpSnap.exists()) {
-      return { success: false, message: 'No active code found. Please request a new code.' };
+      return {
+        success: true,
+        message: data.message || 'Verification code confirmed successfully.'
+      };
+    } finally {
+      clearTimeout(timeout);
     }
-
-    const otpData = otpSnap.data();
-    if (Date.now() > (otpData.expiresAt || 0)) {
-      return { success: false, message: 'Verification code has expired (5-minute limit).' };
-    }
-    if (otpData.code !== cleanCode) {
-      return { success: false, message: 'Incorrect 6-digit verification code.' };
-    }
-
-    return { success: true, message: 'Code verified successfully.' };
   } catch (err: any) {
-    return { success: false, message: err?.message || 'Verification failed.' };
+    console.error('Verify OTP error:', err);
+    return {
+      success: false,
+      message: err?.name === 'AbortError'
+        ? 'Verification service timed out. Please try again.'
+        : (err?.message || 'Unable to verify the code. Please try again.')
+    };
   }
 }
 
-/**
- * Verify OTP Code and Update User Password in Real-time (Step 3 Final Update)
- */
 export async function verifyResetOTPAndSetPassword(
   email: string,
   otpCode: string,

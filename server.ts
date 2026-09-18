@@ -408,12 +408,18 @@ app.post('/api/auth/send-otp', async (req, res) => {
       }
     }
 
+    if (!emailSent) {
+      return res.status(502).json({
+        success: false,
+        error: 'Unable to send the verification code by email. Please try again later.',
+        emailSent: false
+      });
+    }
+
     return res.json({
       success: true,
-      message: emailSent
-        ? `A 6-digit verification code has been sent to ${normalizedEmail}. Code expires in 5 minutes.`
-        : `A 6-digit verification code has been generated for ${normalizedEmail}. Code expires in 5 minutes.`,
-      emailSent
+      message: `A 6-digit verification code has been sent to ${normalizedEmail}. Code expires in 5 minutes.`,
+      emailSent: true
     });
   } catch (err: any) {
     console.error('Send OTP error:', err);
@@ -480,6 +486,10 @@ app.post('/api/auth/verify-reset-password', async (req, res) => {
 
     if (record.otp !== cleanOtp) {
       return res.status(400).json({ success: false, error: 'Incorrect 6-digit verification code.' });
+    }
+
+    if (!record.verified) {
+      return res.status(400).json({ success: false, error: 'Please verify the OTP before resetting your password.' });
     }
 
     // Success! Update password in server state & clean up OTP
