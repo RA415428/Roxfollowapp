@@ -2,7 +2,6 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
-import nodemailer from 'nodemailer';
 import crypto from 'crypto';
 import { createServer as createViteServer } from 'vite';
 import { DEFAULT_ADMIN_CONFIG } from './src/utils/defaultAdminConfig';
@@ -17,32 +16,54 @@ app.use(express.urlencoded({ limit: '100mb', extended: true }));
 // Global In-Memory & State Store for Secure 6-Digit Email OTPs
 let globalOtpsMap: Record<string, { otp: string; expiresAt: number; createdAt: number; verified: boolean }> = {};
 
-// Helper to configure Nodemailer Transporter
-function getMailTransporter() {
-  const user = process.env.GMAIL_USER || process.env.SMTP_USER || 'nayakhardayal4@gmail.com';
-  const pass = process.env.GMAIL_APP_PASS || process.env.SMTP_PASS || '';
+// Helper to send OTP emails via Resend
+async function sendOtpEmail(to: string, otp: string): Promise<boolean> {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.RESEND_FROM_EMAIL || 'RoxFollow <onboarding@resend.dev>';
 
-  if (user && pass) {
-    if (process.env.SMTP_HOST) {
-      return nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: Number(process.env.SMTP_PORT) || 587,
-        secure: process.env.SMTP_SECURE === 'true',
-        connectionTimeout: 10000,
-        greetingTimeout: 10000,
-        socketTimeout: 15000,
-        auth: { user: user.replace(/\s+/g, ''), pass: pass.replace(/\s+/g, '') },
-      });
-    }
-    return nodemailer.createTransport({
-      service: 'gmail',
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-      socketTimeout: 15000,
-      auth: { user: user.replace(/\s+/g, ''), pass: pass.replace(/\s+/g, '') },
-    });
+  if (!apiKey) {
+    console.error('[Email] RESEND_API_KEY is not configured');
+    return false;
   }
-  return null;
+
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        from,
+        to: [to],
+        subject: 'RoxFollow Password Reset OTP',
+        html: `
+          <div style="font-family:Arial,sans-serif;max-width:520px;margin:auto">
+            <h2>RoxFollow Password Reset</h2>
+            <p>Your 6-digit verification code is:</p>
+            <div style="font-size:32px;font-weight:bold;letter-spacing:8px;margin:24px 0">
+              ${otp}
+            </div>
+            <p>This code expires in 5 minutes.</p>
+            <p>If you did not request this code, you can ignore this email.</p>
+          </div>
+        `
+      })
+    });
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      console.error('[Email] Resend API error:', data);
+      return false;
+    }
+
+    console.log('[Email] OTP email accepted by Resend');
+    return true;
+  } catch (error) {
+    console.error('[Email] Resend connection error:', error);
+    return false;
+  }
 }
 
 // Anti-caching middleware so AppCreator24 WebView always gets fresh app version & live rates
@@ -373,34 +394,10 @@ app.post('/api/auth/send-otp', async (req, res) => {
       verified: false
     };
 
-    console.log(`[🔐 OTP AUTH] 6-Digit Code Generated for ${normalizedEmail}: ${otp} (Expires in 5 minutes)`);
+    console.log(`[OTP] Code generated for ${normalizedEmail} (expires in 5 minutes)`);
 
-    // Dispatch via Nodemailer if SMTP credentials are configured
-    const transporter = getMailTransporter();
-    let emailSent = false;
-    if (transporter) {
-      try {
-        await transporter.sendMail({
-          from: `"RoxFollow Security" <${process.env.GMAIL_USER || process.env.SMTP_USER || 'no-reply@roxfollow.com'}>`,
-          to: normalizedEmail,
-          subject: `Your Password Reset OTP: ${otp}`,
-          html: `
-            <div style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff;">
-              <h2 style="color: #0f172a; margin-top: 0;">Password Reset Verification</h2>
-              <p style="color: #475569; font-size: 14px; line-height: 1.5;">
-                You requested to reset your account password. Use the 6-digit verification code below to verify your request:
-              </p>
-              <div style="background-color: #f1f5f9; border-radius: 8px; padding: 18px; text-align: center; margin: 24px 0;">
-                <span style="font-size: 32px; font-weight: 800; letter-spacing: 6px; color: #ec4899; font-family: monospace;">
-                  ${otp}
-                </span>
-              </div>
-              <p style="color: #64748b; font-size: 13px;">
-                ⏰ This code will expire in <strong>5 minutes</strong>. If you did not request this, please ignore this email.
-              </p>
-            </div>
-          `
-        });
+    // Dispatch OTP email via Resend HTTPS API
+    const emailSent = await sendOtpEmail(normalizedEmail, otp);
         emailSent = true;
         console.log(`[📧 Email Dispatched] OTP successfully delivered to ${normalizedEmail}`);
       } catch (mailErr: any) {

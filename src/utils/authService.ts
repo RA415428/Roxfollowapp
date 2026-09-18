@@ -829,7 +829,7 @@ export async function signInWithEmail(
  * Request Password Reset Verification Code (OTP)
  * Calls Backend Endpoint /api/auth/send-otp to dispatch real 6-digit email OTP (5-minute expiry)
  */
-export async function requestPasswordResetOTP(email: string): Promise<{ success: boolean; message: string; previewCode?: string }> {
+export async function requestPasswordResetOTP(email: string): Promise<{ success: boolean; message: string }> {
   try {
     const normalizedEmail = email.trim().toLowerCase();
 
@@ -872,8 +872,7 @@ export async function requestPasswordResetOTP(email: string): Promise<{ success:
 
       return {
         success: true,
-        message: data.message || 'A 6-digit verification code has been sent to your email.',
-        previewCode: isOwnerUser ? data.otp : undefined
+        message: data.message || 'A 6-digit verification code has been sent to your email.'
       };
     } finally {
       clearTimeout(timeout);
