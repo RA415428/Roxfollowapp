@@ -309,16 +309,16 @@ async function executeSmmPanelRequest(params: {
 
 
 async function sendOtpEmail(to: string, otp: string): Promise<boolean> {
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM_EMAIL || 'RoxFollow <onboarding@resend.dev>';
+  const apiKey = process.env.SENDLIB_API_KEY;
+  const from = process.env.SENDLIB_FROM_EMAIL || 'nayakhardayal4@gmail.com';
 
   if (!apiKey) {
-    console.error('[Email] RESEND_API_KEY is not configured');
+    console.error('[Email] SENDLIB_API_KEY is not configured');
     return false;
   }
 
   try {
-    const response = await fetch('https://api.resend.com/emails', {
+    const response = await fetch('https://sendlib.samueltuoyo.com/api/send', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -326,15 +326,14 @@ async function sendOtpEmail(to: string, otp: string): Promise<boolean> {
       },
       body: JSON.stringify({
         from,
-        to: [to],
+        to,
         subject: `Your Password Reset OTP: ${otp}`,
         html: `
-          <div style="font-family:Arial,sans-serif;max-width:500px;margin:auto;padding:24px;border:1px solid #e2e8f0;border-radius:12px;background:#fff">
+          <div style="font-family:Arial,sans-serif;max-width:500px;margin:auto;padding:24px">
             <h2>Password Reset Verification</h2>
-            <p>You requested to reset your account password.</p>
             <p>Your 6-digit verification code is:</p>
-            <div style="background:#f1f5f9;border-radius:8px;padding:18px;text-align:center;margin:24px 0">
-              <span style="font-size:32px;font-weight:800;letter-spacing:6px;font-family:monospace">${otp}</span>
+            <div style="font-size:32px;font-weight:800;letter-spacing:6px;text-align:center;margin:24px 0">
+              ${otp}
             </div>
             <p>This code will expire in <strong>5 minutes</strong>.</p>
             <p>If you did not request this, please ignore this email.</p>
@@ -346,14 +345,14 @@ async function sendOtpEmail(to: string, otp: string): Promise<boolean> {
     const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
-      console.error('[Email] Resend API error:', data);
+      console.error('[Email] Sendlib API error:', data);
       return false;
     }
 
-    console.log(`[Email] OTP accepted by Resend for ${to}`);
+    console.log(`[Email] OTP sent successfully to ${to}`);
     return true;
   } catch (err: any) {
-    console.error('[Email] Resend connection error:', err?.message || err);
+    console.error('[Email] Sendlib connection error:', err?.message || err);
     return false;
   }
 }
