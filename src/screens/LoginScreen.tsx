@@ -24,8 +24,6 @@ import {
   signUpWithEmail,
   requestPasswordResetOTP,
   sendPasswordResetLink,
-  verifyOTPCode,
-  verifyResetOTPAndSetPassword,
   resetPasswordWithEmail,
   signInWithGoogle,
   AuthResult
@@ -104,7 +102,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     setConfirmPassword('');
   };
 
-  const handleSendOtp = async (isResend = false) => {
+  const handleSendOtp = async () => {
     if (!email || !email.includes('@')) {
       setErrorMessage('Please enter a valid email address.');
       return;
@@ -112,85 +110,19 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
     setIsLoading(true);
     setErrorMessage(null);
-    if (!isResend) setSuccessMessage(null);
+    setSuccessMessage(null);
 
     try {
       const res = await requestPasswordResetOTP(email);
+
       if (res.success) {
         setSuccessMessage(res.message);
-        setForgotStep(2);
-        setOtpTimer(300); // 5 minutes validity
-        setResendCooldown(60); // 60s cooldown for next resend
-        if (onShowToast) onShowToast('📩 6-digit verification code sent to your email!');
+        if (onShowToast) onShowToast('📩 Password reset link sent to your email!');
       } else {
-        setErrorMessage(res.message || 'Failed to dispatch verification code.');
+        setErrorMessage(res.message || 'Failed to send password reset email.');
       }
     } catch (err: any) {
-      setErrorMessage(err?.message || 'Error sending verification code.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleVerifyOtp = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const cleanCode = otpCode.trim();
-    if (!cleanCode || cleanCode.length !== 6) {
-      setErrorMessage('Please enter the complete 6-digit verification code.');
-      return;
-    }
-    if (otpTimer <= 0) {
-      setErrorMessage('Verification code has expired. Please click "Resend Code".');
-      return;
-    }
-
-    setIsLoading(true);
-    setErrorMessage(null);
-
-    try {
-      const res = await verifyOTPCode(email, cleanCode);
-      if (res.success) {
-        setSuccessMessage('Code verified! Set your new password.');
-        setForgotStep(3);
-      } else {
-        setErrorMessage(res.message || 'Incorrect verification code.');
-      }
-    } catch (err: any) {
-      setErrorMessage(err?.message || 'Verification failed.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleResetPassword = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!newPassword || newPassword.length < 6) {
-      setErrorMessage('New password must be at least 6 characters.');
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setErrorMessage('Passwords do not match. Please re-type.');
-      return;
-    }
-
-    setIsLoading(true);
-    setErrorMessage(null);
-
-    try {
-      const res = await verifyResetOTPAndSetPassword(email, otpCode, newPassword);
-      if (res.success) {
-        setSuccessMessage(res.message);
-        setPassword(newPassword);
-        if (onShowToast) onShowToast('🎉 Password reset successfully!');
-        setTimeout(() => {
-          handleModeSwitch('SIGN_IN');
-          setSuccessMessage('Password updated! Sign in with your new password.');
-        }, 1500);
-      } else {
-        setErrorMessage(res.message || 'Failed to reset password.');
-      }
-    } catch (err: any) {
-      setErrorMessage(err?.message || 'Error updating password.');
+      setErrorMessage(err?.message || 'Error sending password reset email.');
     } finally {
       setIsLoading(false);
     }
@@ -199,9 +131,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (authMode === 'FORGOT_PASSWORD') {
-      if (forgotStep === 1) await handleSendOtp();
-      else if (forgotStep === 2) await handleVerifyOtp();
-      else if (forgotStep === 3) await handleResetPassword();
+      await handleSendOtp();
       return;
     }
 
@@ -331,11 +261,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             <span>
               {authMode === 'SIGN_IN' && 'Sign In to Your Account'}
               {authMode === 'SIGN_UP' && 'Create Your Account'}
-              {authMode === 'FORGOT_PASSWORD' && (
-                forgotStep === 1 ? 'Step 1: Enter Email' :
-                forgotStep === 2 ? 'Step 2: 6-Digit OTP' :
-                'Step 3: New Password'
-              )}
+              {authMode === 'FORGOT_PASSWORD' && 'Reset Your Password'}
             </span>
             <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
           </h2>
@@ -343,9 +269,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           <p className="text-[11px] text-slate-400 mb-3 leading-relaxed max-w-xs mx-auto">
             {authMode === 'SIGN_IN' && 'Enter your email and password to sign in.'}
             {authMode === 'SIGN_UP' && 'Register with email to get free bonus coins immediately!'}
-            {authMode === 'FORGOT_PASSWORD' && forgotStep === 1 && 'Enter your registered email to receive a 6-digit OTP.'}
-            {authMode === 'FORGOT_PASSWORD' && forgotStep === 2 && `Enter the 6-digit OTP code sent to ${email}`}
-            {authMode === 'FORGOT_PASSWORD' && forgotStep === 3 && 'Choose a strong new password for your account.'}
+            {authMode === 'FORGOT_PASSWORD' && 'Enter your registered email and we will send you a password reset link.'}
           </p>
 
           {/* Alert Boxes */}
@@ -394,7 +318,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             )}
 
             {/* Email Field (Shown in Sign In, Sign Up, and Forgot Step 1 & 2) */}
-            {(authMode !== 'FORGOT_PASSWORD' || forgotStep === 1 || forgotStep === 2) && (
+            {true && (
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-[11px] font-semibold text-slate-300">Email Address</label>
@@ -495,7 +419,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   <button
                     type="button"
                     disabled={resendCooldown > 0 || isLoading}
-                    onClick={() => handleSendOtp(true)}
+                    onClick={() => handleSendOtp()}
                     className={`text-[10.5px] font-bold underline cursor-pointer ${
                       resendCooldown > 0 ? 'text-slate-500 cursor-not-allowed no-underline' : 'text-pink-400 hover:text-pink-300'
                     }`}
@@ -592,9 +516,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     {authMode === 'SIGN_IN' && 'Sign In'}
                     {authMode === 'SIGN_UP' && 'Create Account'}
                     {authMode === 'FORGOT_PASSWORD' && (
-                      forgotStep === 1 ? 'Send 6-Digit OTP' :
-                      forgotStep === 2 ? 'Verify Code' :
-                      'Reset Password'
+                      'Send Password Reset Link'
                     )}
                   </span>
                   {authMode === 'FORGOT_PASSWORD' && forgotStep === 1 ? (

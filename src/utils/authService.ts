@@ -826,8 +826,8 @@ export async function signInWithEmail(
 }
 
 /**
- * Request Password Reset Verification Code (OTP)
- * Calls Backend Endpoint /api/auth/send-otp to dispatch real 6-digit email OTP (5-minute expiry)
+ * Request Firebase Password Reset Email
+ * Sends the standard Firebase password-reset link to the registered email.
  */
 export async function requestPasswordResetOTP(email: string): Promise<{ success: boolean; message: string }> {
   try {
@@ -850,40 +850,24 @@ export async function requestPasswordResetOTP(email: string): Promise<{ success:
       };
     }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
+    const result = await sendPasswordResetLink(normalizedEmail);
 
-    try {
-      const response = await fetch(getApiUrl('/api/auth/send-otp'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: normalizedEmail }),
-        signal: controller.signal
-      });
-
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        return {
-          success: false,
-          message: data.error || 'Failed to send verification code. Please try again.'
-        };
-      }
-
+    if (!result.success) {
       return {
-        success: true,
-        message: data.message || 'A 6-digit verification code has been sent to your email.'
+        success: false,
+        message: result.message || 'Failed to send password reset email. Please try again.'
       };
-    } finally {
-      clearTimeout(timeout);
     }
+
+    return {
+      success: true,
+      message: 'Password reset link sent to your email. Please check your inbox and spam folder.'
+    };
   } catch (err: any) {
-    console.error('Request OTP error:', err);
+    console.error('Request password reset error:', err);
     return {
       success: false,
-      message: err?.name === 'AbortError'
-        ? 'Email service timed out. Please try again.'
-        : (err?.message || 'Failed to send verification code. Please try again.')
+      message: err?.message || 'Failed to send password reset email. Please try again.'
     };
   }
 }
