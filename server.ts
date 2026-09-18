@@ -328,6 +328,7 @@ async function sendOtpEmail(to: string, otp: string): Promise<boolean> {
         from,
         to,
         subject: `Your Password Reset OTP: ${otp}`,
+        text: `Your RoxFollow password reset OTP is ${otp}. This code expires in 5 minutes.`,
         html: `
           <div style="font-family:Arial,sans-serif;max-width:500px;margin:auto;padding:24px">
             <h2>Password Reset Verification</h2>
