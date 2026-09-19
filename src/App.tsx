@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { OrderStatus,  AppScreen, MainTab, UserWallet, Order, CoinPackage, AdminConfig, UserAccount, ActivityLog } from './types';
+import { AppScreen, MainTab, UserWallet, Order, CoinPackage, AdminConfig, UserAccount, ActivityLog } from './types';
 import { 
   loadAdminConfig, 
   saveAdminConfig, 
@@ -26,7 +26,7 @@ import {
   updateUserOnFirestore
 } from './utils/storage';
 import { DEFAULT_ADMIN_CONFIG } from './utils/defaultAdminConfig';
-import { submitOrderToSmmApi, fetchSmmOrderStatus } from './utils/smmService';
+import { submitOrderToSmmApi } from './utils/smmService';
 import { db } from './lib/firebase';
 import { doc, setDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
 
@@ -599,150 +599,6 @@ export function App() {
       window.removeEventListener('instaboost_config_updated', handleConfigUpdated);
     };
   }, []);
-
-  // SMM Panel Status Sync
-  // Poll only non-terminal orders that already have an SMM order ID.
-  useEffect(() => {
-    let cancelled = false;
-    let syncing = false;
-
-    const normalizeSmmStatus = (rawStatus: unknown): OrderStatus | null => {
-      const status = String(rawStatus || '').trim().toLowerCase();
-
-      if (!status) return null;
-
-      if (
-        status.includes('cancel') ||
-        status.includes('reject') ||
-        status === 'failed' ||
-        status === 'fail'
-      ) {
-        return 'CANCELLED';
-      }
-
-      if (
-        status.includes('complete') ||
-        status === 'completed' ||
-        status === 'done' ||
-        status === 'finished'
-      ) {
-        return 'COMPLETED';
-      }
-
-      if (
-        status.includes('progress') ||
-        status.includes('process') ||
-        status.includes('partial')
-      ) {
-        return 'IN_PROGRESS';
-      }
-
-      if (
-        status.includes('pending') ||
-        status.includes('queue') ||
-        status.includes('wait') ||
-        status === 'new'
-      ) {
-        return 'PROCESSING';
-      }
-
-      return null;
-    };
-
-    const syncSmmOrderStatuses = async () => {
-      if (cancelled || syncing || document.hidden) return;
-      if (!adminConfig.smmApi?.enabled) return;
-
-      const trackedOrders = orders.filter(
-        (order) =>
-          !!order.smmOrderId &&
-          order.status !== 'COMPLETED' &&
-          order.status !== 'CANCELLED'
-      );
-
-      if (trackedOrders.length === 0) return;
-
-      syncing = true;
-
-      try {
-        const changes = new Map<string, Order>();
-
-        for (const order of trackedOrders) {
-          if (cancelled) break;
-
-          const result = await fetchSmmOrderStatus(
-            String(order.smmOrderId),
-            adminConfig.smmApi
-          );
-
-          if (!result.success || !result.status) continue;
-
-          const mappedStatus = normalizeSmmStatus(result.status);
-          if (!mappedStatus) continue;
-
-          const changed =
-            order.status !== mappedStatus ||
-            order.smmResponse !== result.rawResponse;
-
-          if (changed) {
-            changes.set(order.id, {
-              ...order,
-              status: mappedStatus,
-              smmResponse: result.rawResponse || order.smmResponse,
-              updatedAt: Date.now()
-            });
-          }
-        }
-
-        if (cancelled || changes.size === 0) return;
-
-        const updatedOrders = orders.map((order) => {
-          return changes.get(order.id) || order;
-        });
-
-        handleUpdateOrders(updatedOrders);
-
-        // Keep the same order status synchronized to Firestore and server.
-        for (const updatedOrder of changes.values()) {
-          if (!updatedOrder.id) continue;
-
-          setDoc(
-            doc(db, 'orders', updatedOrder.id),
-            updatedOrder,
-            { merge: true }
-          ).catch(() => {});
-
-          fetch(getApiUrl('/api/orders'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(updatedOrder)
-          }).catch(() => {});
-        }
-      } finally {
-        syncing = false;
-      }
-    };
-
-    syncSmmOrderStatuses();
-
-    const interval = setInterval(() => {
-      syncSmmOrderStatuses();
-    }, 60000);
-
-    const handleVisibility = () => {
-      if (!document.hidden) {
-        syncSmmOrderStatuses();
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibility);
-
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
-  }, [orders, adminConfig.smmApi]);
 
   // Save State updates to LocalStorage & broadcast
   const handleUpdateAdminConfig = (newConfig: AdminConfig) => {

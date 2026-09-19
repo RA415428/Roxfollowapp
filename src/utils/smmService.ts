@@ -167,59 +167,6 @@ export async function submitOrderToSmmApi(
   };
 }
 
-
-export interface SmmOrderStatusResult {
-  success: boolean;
-  status?: string;
-  startCount?: string;
-  remains?: string;
-  charge?: string;
-  currency?: string;
-  rawResponse?: string;
-  error?: string;
-}
-
-export async function fetchSmmOrderStatus(
-  orderId: string,
-  smmSettings: any
-): Promise<SmmOrderStatusResult> {
-  try {
-    if (!orderId) {
-      return { success: false, error: 'SMM Order ID is required.' };
-    }
-
-    const response = await smmFormPost(
-      '/api/smm/proxy-status',
-      new URLSearchParams({
-        orderId: String(orderId),
-        smmSettings: JSON.stringify(smmSettings || {})
-      })
-    );
-
-    if (!response?.success) {
-      return {
-        success: false,
-        error: response?.error || 'Unable to fetch SMM order status.'
-      };
-    }
-
-    return {
-      success: true,
-      status: response.status,
-      startCount: response.startCount,
-      remains: response.remains,
-      charge: response.charge,
-      currency: response.currency,
-      rawResponse: response.rawResponse
-    };
-  } catch (error: any) {
-    return {
-      success: false,
-      error: error?.message || 'SMM status request failed.'
-    };
-  }
-}
-
 export async function testSmmApiConnection(apiUrl: string, apiKey: string): Promise<{ success: boolean; message: string; balance?: string }> {
   if (!apiUrl || !apiUrl.trim()) {
     return { success: false, message: 'API URL is required.' };
