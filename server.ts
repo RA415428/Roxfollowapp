@@ -214,12 +214,13 @@ app.get('/ads.txt', (req, res) => {
 async function executeSmmPanelRequest(params: {
   apiUrl: string;
   apiKey: string;
-  action: 'add' | 'balance';
+  action: 'add' | 'balance' | 'status';
   serviceId?: string;
   link?: string;
   quantity?: number | string;
+  orderId?: string;
 }) {
-  const { apiUrl, apiKey, action, serviceId, link, quantity } = params;
+  const { apiUrl, apiKey, action, serviceId, link, quantity, orderId } = params;
 
   if (!apiUrl || !apiUrl.trim()) {
     return { success: false, error: 'SMM API URL is empty or invalid.' };
@@ -239,6 +240,14 @@ async function executeSmmPanelRequest(params: {
       formData.append('service', String(serviceId || '101'));
       formData.append('link', link || '');
       formData.append('quantity', String(quantity || 100));
+    } else if (action === 'status') {
+      if (!orderId) {
+        return {
+          success: false,
+          error: 'SMM Order ID is required for status check.'
+        };
+      }
+      formData.append('order', String(orderId));
     }
 
     const response = await fetch(cleanUrl, {
@@ -276,6 +285,30 @@ async function executeSmmPanelRequest(params: {
         return {
           success: false,
           error: data.rawText || 'Unexpected response from SMM panel',
+          rawResponse: text
+        };
+      }
+    } else if (action === 'status') {
+      if (data && data.status !== undefined) {
+        return {
+          success: true,
+          status: String(data.status),
+          startCount: data.start_count !== undefined ? String(data.start_count) : undefined,
+          remains: data.remains !== undefined ? String(data.remains) : undefined,
+          charge: data.charge !== undefined ? String(data.charge) : undefined,
+          currency: data.currency !== undefined ? String(data.currency) : undefined,
+          rawResponse: JSON.stringify(data, null, 2)
+        };
+      } else if (data && data.error) {
+        return {
+          success: false,
+          error: String(data.error),
+          rawResponse: JSON.stringify(data, null, 2)
+        };
+      } else {
+        return {
+          success: false,
+          error: 'SMM panel returned an unexpected status response.',
           rawResponse: text
         };
       }
@@ -577,6 +610,41 @@ app.post('/api/smm/proxy-order', async (req, res) => {
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message || 'SMM proxy server error' });
+  }
+});
+
+app.post('/api/smm/proxy-status', async (req, res) => {
+  try {
+    const { orderId, smmSettings } = req.body || {};
+    const settings = smmSettings || globalAdminConfig.smmApi;
+
+    if (!settings || !settings.enabled) {
+      return res.status(400).json({
+        success: false,
+        error: 'SMM API forwarding is disabled in Admin settings.'
+      });
+    }
+
+    if (!orderId) {
+      return res.status(400).json({
+        success: false,
+        error: 'SMM Order ID is required.'
+      });
+    }
+
+    const result = await executeSmmPanelRequest({
+      apiUrl: settings.apiUrl,
+      apiKey: settings.globalApiKey,
+      action: 'status',
+      orderId: String(orderId)
+    });
+
+    return res.json(result);
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      error: err.message || 'SMM status proxy server error'
+    });
   }
 });
 
