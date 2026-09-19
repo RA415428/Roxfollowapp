@@ -545,6 +545,20 @@ export function App() {
     }
   }, [currentScreen]);
 
+  // Native Firebase Cloud Messaging initialization.
+  // This only handles push notifications and does not modify any ad behavior.
+  useEffect(() => {
+    if (currentScreen !== 'MAIN_APP') return;
+
+    import('./utils/notifications')
+      .then(({ initializePushNotifications }) => {
+        initializePushNotifications();
+      })
+      .catch((error) => {
+        console.warn('FCM initialization failed:', error);
+      });
+  }, [currentScreen]);
+
   // 5-Minute Bonus Ad Reminder Toast (Only shows non-intrusive toast, no auto popups)
   useEffect(() => {
     if (currentScreen !== 'MAIN_APP' || !adminConfig.ads.enabled) return;
