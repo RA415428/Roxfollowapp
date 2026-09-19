@@ -1,3 +1,6 @@
+import { cert, getApp, getApps, initializeApp } from 'firebase-admin/app';
+import { getMessaging } from 'firebase-admin/messaging';
+
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -596,6 +599,119 @@ app.post('/api/smm/proxy-balance', async (req, res) => {
 });
 
 // 1. Get Realtime Admin Config (AdMob IDs, Pricing, Announcements, SMM API)
+
+// ============================================================
+// ROXY FCM SERVER SETUP
+// ============================================================
+
+let fcmReady = false;
+
+function getFirebaseAdminApp() {
+  if (getApps().length > 0) {
+    fcmReady = true;
+    return getApp();
+  }
+
+  const rawCredentials = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+
+  if (!rawCredentials) {
+    console.warn(
+      'FCM disabled: FIREBASE_SERVICE_ACCOUNT_JSON is not configured on the server.'
+    );
+    return null;
+  }
+
+  try {
+    const serviceAccount = JSON.parse(rawCredentials);
+
+    if (serviceAccount.private_key) {
+      serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+    }
+
+    const app = initializeApp({
+      credential: cert(serviceAccount),
+    });
+
+    fcmReady = true;
+    console.log('Firebase Admin initialized successfully for FCM.');
+    return app;
+  } catch (error) {
+    fcmReady = false;
+    console.error('Firebase Admin initialization failed:', error);
+    return null;
+  }
+}
+
+app.post('/api/notifications/send', async (req, res) => {
+  try {
+    const { title, message, bannerUrl, adminPassword } = req.body || {};
+
+    if (!title || !String(title).trim()) {
+      return res.status(400).json({
+        success: false,
+        error: 'Notification title is required.',
+      });
+    }
+
+    if (!adminPassword || adminPassword !== globalAdminConfig.adminPassword) {
+      return res.status(403).json({
+        success: false,
+        error: 'Admin authorization failed.',
+      });
+    }
+
+    const firebaseApp = getFirebaseAdminApp();
+
+    if (!firebaseApp) {
+      return res.status(503).json({
+        success: false,
+        error: 'FCM server credentials are not configured.',
+      });
+    }
+
+    const messaging = getMessaging(firebaseApp);
+
+    const data: Record<string, string> = {
+      type: 'admin_announcement',
+      notificationId: `notif_${Date.now()}`,
+    };
+
+    if (bannerUrl) {
+      data.bannerUrl = String(bannerUrl);
+    }
+
+    const messageId = await messaging.send({
+      topic: 'all_users',
+      notification: {
+        title: String(title),
+        body: String(message || 'Notification from Admin'),
+      },
+      data,
+      android: {
+        priority: 'high',
+        notification: {
+          channelId: 'default',
+        },
+      },
+    });
+
+    console.log('FCM broadcast sent to all_users:', messageId);
+
+    return res.json({
+      success: true,
+      messageId,
+      topic: 'all_users',
+    });
+  } catch (error: any) {
+    console.error('FCM broadcast error:', error);
+
+    return res.status(500).json({
+      success: false,
+      error: error?.message || 'Failed to send FCM notification.',
+    });
+  }
+});
+
 app.get('/api/config', (req, res) => {
   res.json({
     success: true,

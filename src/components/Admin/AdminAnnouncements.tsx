@@ -58,10 +58,11 @@ export const AdminAnnouncements: React.FC<AdminAnnouncementsProps> = ({ config, 
     setBonusCoinsStr(String(parsedBonus));
 
     if (finalAnnouncement.enabled && finalAnnouncement.title) {
-      broadcastAdminNotification(
+      void broadcastAdminNotification(
         finalAnnouncement.title,
         finalAnnouncement.message || 'Check out new announcement on Roxyefollow!',
-        finalAnnouncement.bannerUrl
+        finalAnnouncement.bannerUrl,
+        config.adminPassword
       );
     }
 
@@ -71,10 +72,11 @@ export const AdminAnnouncements: React.FC<AdminAnnouncementsProps> = ({ config, 
 
   const handleSendDirectPush = () => {
     if (!announcementState.title) return;
-    broadcastAdminNotification(
+    void broadcastAdminNotification(
       announcementState.title,
       announcementState.message || 'Notification from Admin',
-      announcementState.bannerUrl
+      announcementState.bannerUrl,
+      config.adminPassword
     );
     setPushSentSuccess(true);
     setTimeout(() => setPushSentSuccess(false), 3000);
