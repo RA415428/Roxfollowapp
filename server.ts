@@ -642,6 +642,31 @@ function getFirebaseAdminApp() {
   }
 }
 
+
+app.get('/api/notifications/status', (req, res) => {
+  const credentialsConfigured = Boolean(
+    process.env.FIREBASE_SERVICE_ACCOUNT_JSON
+  );
+
+  let firebaseInitialized = false;
+
+  try {
+    const firebaseApp = getFirebaseAdminApp();
+    firebaseInitialized = Boolean(firebaseApp);
+  } catch (error) {
+    firebaseInitialized = false;
+  }
+
+  return res.json({
+    success: true,
+    fcm: {
+      credentialsConfigured,
+      firebaseInitialized,
+      topic: 'all_users'
+    }
+  });
+});
+
 app.post('/api/notifications/send', async (req, res) => {
   try {
     const { title, message, bannerUrl, adminPassword } = req.body || {};
