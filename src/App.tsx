@@ -154,8 +154,6 @@ export function App() {
 
   // Loaded Storage State
   const [adminConfig, setAdminConfig] = useState<AdminConfig>(loadAdminConfig);
-  const adminConfigLastUpdatedRef = useRef<number>(adminConfig?.lastUpdated || 0);
-  useEffect(() => { adminConfigLastUpdatedRef.current = adminConfig?.lastUpdated || 0; }, [adminConfig]);
   const [wallet, setWallet] = useState<UserWallet>(loadUserWallet);
   const [orders, setOrders] = useState<Order[]>(loadOrders);
   const [users, setUsers] = useState<UserAccount[]>(loadUsersList);
@@ -233,7 +231,7 @@ export function App() {
       if (document.hidden) return;
       try {
         const serverConfig = await fetchServerAdminConfig();
-        if (serverConfig && (serverConfig.lastUpdated || 0) >= adminConfigLastUpdatedRef.current) {
+        if (serverConfig) {
           setAdminConfig(serverConfig);
         }
         const serverLogs = await fetchServerActivityLogs();
