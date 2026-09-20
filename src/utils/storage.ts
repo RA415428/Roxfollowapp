@@ -1042,7 +1042,7 @@ export async function syncUserDeviceWithServer(passedWallet?: UserWallet): Promi
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           memberId: cleanMemberId,
-          coins: wallet.coins,
+          ...(passedWallet ? { coins: wallet.coins } : {}),
           status: wallet.status || 'ACTIVE',
           deviceFingerprint: fp,
           location,

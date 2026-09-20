@@ -775,7 +775,7 @@ export function App() {
       return;
     }
     const currentWallet = loadUserWallet();
-    const baseCoins = Math.max(wallet.coins, currentWallet.coins);
+    const baseCoins = currentWallet.coins;
     const updated = {
       ...wallet,
       coins: Math.round((baseCoins + earnedCoins) * 100) / 100,

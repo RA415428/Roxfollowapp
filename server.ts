@@ -1104,10 +1104,10 @@ app.post('/api/orders', async (req, res) => {
 
         if (userEntry) {
           userEntry.ordersCount = (userEntry.ordersCount || 0) + 1;
+          // Coin balance is already updated by the client/Firestore wallet mutation.
+          // Do not deduct here or the same order will charge the user twice.
           if (typeof targetOrder.coinsSpent === 'number' && targetOrder.coinsSpent > 0) {
-            userEntry.coins = Math.max(0, Math.round(((userEntry.coins || 0) - targetOrder.coinsSpent) * 100) / 100);
             userEntry.totalCoinsSpent = (userEntry.totalCoinsSpent || 0) + targetOrder.coinsSpent;
-            userEntry.coinsUpdatedByAdmin = false;
           }
         }
       }
@@ -1198,10 +1198,10 @@ app.post('/api/orders', async (req, res) => {
 
         if (userEntry) {
           userEntry.ordersCount = (userEntry.ordersCount || 0) + 1;
+          // Coin balance is already updated by the client/Firestore wallet mutation.
+          // Do not deduct here or the same order will charge the user twice.
           if (typeof targetOrder.coinsSpent === 'number' && targetOrder.coinsSpent > 0) {
-            userEntry.coins = Math.max(0, Math.round(((userEntry.coins || 0) - targetOrder.coinsSpent) * 100) / 100);
             userEntry.totalCoinsSpent = (userEntry.totalCoinsSpent || 0) + targetOrder.coinsSpent;
-            userEntry.coinsUpdatedByAdmin = false;
           }
         }
       }
@@ -2209,7 +2209,10 @@ app.post('/api/users/sync', (req, res) => {
       : (existing.status || 'ACTIVE');
 
     // 2. Coins Handling: Respect Admin override flag
-    let synchronizedCoins = typeof user.coins === 'number' ? user.coins : (typeof existing.coins === 'number' ? existing.coins : 0);
+    let synchronizedCoins = typeof existing.coins === 'number' ? existing.coins : 0;
+    if (typeof user.coins === 'number') {
+      synchronizedCoins = Math.max(0, Number(user.coins) || 0);
+    }
     let coinsUpdatedByAdmin = existing.coinsUpdatedByAdmin === true;
 
     if (user.coinsUpdatedByAdmin === true) {
