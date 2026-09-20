@@ -23,10 +23,11 @@ import {
   traceReferralClick,
   initAutoDeviceRestore,
   getApiUrl,
-  updateUserOnFirestore
+  updateUserOnFirestore,
+  updateOrderStatus
 } from './utils/storage';
 import { DEFAULT_ADMIN_CONFIG } from './utils/defaultAdminConfig';
-import { submitOrderToSmmApi } from './utils/smmService';
+import { submitOrderToSmmApi, fetchSmmOrderStatus } from './utils/smmService';
 import { db } from './lib/firebase';
 import { doc, setDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
 
@@ -1019,6 +1020,137 @@ export function App() {
     }, (adminConfig.ads?.autoAdIntervalMinutes ?? 4) * 60 * 1000);
     return () => clearInterval(interval);
   }, [adminConfig.ads?.autoAdIntervalMinutes]);
+
+  // Sync SMM panel order status into the app.
+  // This only checks orders that already have an SMM Order ID.
+  useEffect(() => {
+    if (currentScreen !== 'MAIN_APP') return;
+
+    let stopped = false;
+
+    const syncSmmStatuses = async () => {
+      if (stopped || !navigator.onLine) return;
+
+      const activeOrders = orders.filter(
+        (order) =>
+          order.smmOrderId &&
+          order.status !== 'COMPLETED' &&
+          order.status !== 'CANCELLED'
+      );
+
+      if (!activeOrders.length) return;
+
+      for (const order of activeOrders) {
+        if (stopped) return;
+
+        const result = await fetchSmmOrderStatus(
+          String(order.smmOrderId),
+          adminConfig.smmApi,
+          order.serviceType
+        );
+
+        if (!result.success || !result.status) continue;
+
+        const raw = String(result.status).trim().toLowerCase();
+        let nextStatus: 'PROCESSING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | null = null;
+
+        if (
+          raw.includes('cancel') ||
+          raw.includes('canceled') ||
+          raw.includes('failed') ||
+          raw.includes('reject') ||
+          raw.includes('refunded')
+        ) {
+          nextStatus = 'CANCELLED';
+        } else if (
+          raw.includes('complete') ||
+          raw.includes('completed') ||
+          raw.includes('done') ||
+          raw.includes('finished')
+        ) {
+          nextStatus = 'COMPLETED';
+        } else if (
+          raw.includes('progress') ||
+          raw.includes('processing') ||
+          raw.includes('partial')
+        ) {
+          nextStatus = 'IN_PROGRESS';
+        } else if (
+          raw.includes('pending') ||
+          raw.includes('queue') ||
+          raw.includes('waiting') ||
+          raw.includes("new")
+        ) {
+          nextStatus = 'PROCESSING';
+        }
+
+        if (!nextStatus || nextStatus === order.status) continue;
+
+        const updatedAt = Date.now();
+
+        setOrders((current) =>
+          current.map((item) =>
+            item.id === order.id
+              ? {
+                  ...item,
+                  status: nextStatus!,
+                  updatedAt,
+                  statusReason: `SMM Panel status: ${result.status}`
+                }
+              : item
+          )
+        );
+
+        const localOrders = loadOrders().map((item) =>
+          item.id === order.id
+            ? {
+                ...item,
+                status: nextStatus!,
+                updatedAt,
+                statusReason: `SMM Panel status: ${result.status}`
+              }
+            : item
+        );
+        saveOrders(localOrders);
+
+        await updateOrderStatus(
+          order.id,
+          nextStatus,
+          `SMM Panel status: ${result.status}`
+        );
+
+        try {
+          await setDoc(
+            doc(db, 'orders', order.id),
+            {
+              status: nextStatus,
+              updatedAt,
+              statusReason: `SMM Panel status: ${result.status}`
+            },
+            { merge: true }
+          );
+        } catch {}
+      }
+    };
+
+    syncSmmStatuses();
+
+    const timer = window.setInterval(syncSmmStatuses, 60000);
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        syncSmmStatuses();
+      }
+    };
+
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [currentScreen, orders, adminConfig.smmApi]);
 
   // Google Login Gate Screen - Required before entry into main app
   if (currentScreen === 'LOGIN' || (!isGoogleAuthenticated && currentScreen !== 'ADMIN')) {

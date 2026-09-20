@@ -167,6 +167,69 @@ export async function submitOrderToSmmApi(
   };
 }
 
+
+export interface SmmOrderStatusResponse {
+  success: boolean;
+  status?: string;
+  startCount?: string;
+  remains?: string;
+  charge?: string;
+  currency?: string;
+  error?: string;
+  rawResponse?: string;
+}
+
+export async function fetchSmmOrderStatus(
+  orderId: string,
+  smmSettings: SmmApiSettings,
+  serviceType?: string
+): Promise<SmmOrderStatusResponse> {
+  if (!orderId) {
+    return { success: false, error: "SMM Order ID is required." };
+  }
+
+  if (!smmSettings?.enabled) {
+    return { success: false, error: "SMM API forwarding is disabled." };
+  }
+
+  try {
+    const response = await fetch(getApiUrl("/api/smm/proxy-status"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        orderId: String(orderId),
+        serviceType: serviceType || "",
+        smmSettings
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok || !data?.success) {
+      return {
+        success: false,
+        error: data?.error || "Unable to fetch SMM order status.",
+        rawResponse: data?.rawResponse
+      };
+    }
+
+    return {
+      success: true,
+      status: data.status,
+      startCount: data.startCount,
+      remains: data.remains,
+      charge: data.charge,
+      currency: data.currency,
+      rawResponse: data.rawResponse
+    };
+  } catch (err: any) {
+    return {
+      success: false,
+      error: err?.message || "SMM status network error."
+    };
+  }
+}
+
 export async function testSmmApiConnection(apiUrl: string, apiKey: string): Promise<{ success: boolean; message: string; balance?: string }> {
   if (!apiUrl || !apiUrl.trim()) {
     return { success: false, message: 'API URL is required.' };

@@ -661,7 +661,7 @@ app.post('/api/smm/proxy-order', async (req, res) => {
 
 app.post('/api/smm/proxy-status', async (req, res) => {
   try {
-    const { orderId, smmSettings } = req.body || {};
+    const { orderId, smmSettings, serviceType } = req.body || {};
     const settings = smmSettings || globalAdminConfig.smmApi;
 
     if (!settings || !settings.enabled) {
@@ -678,9 +678,21 @@ app.post('/api/smm/proxy-status', async (req, res) => {
       });
     }
 
+    let apiKey = settings.globalApiKey;
+    const typeLower = String(serviceType || '').toLowerCase();
+
+    if (typeLower.includes('follower') && settings.services?.followers?.apiKey) apiKey = settings.services.followers.apiKey;
+    else if (typeLower.includes('like') && settings.services?.likes?.apiKey) apiKey = settings.services.likes.apiKey;
+    else if ((typeLower.includes('view') || typeLower.includes('reel')) && settings.services?.views?.apiKey) apiKey = settings.services.views.apiKey;
+    else if (typeLower.includes('comment') && settings.services?.comments?.apiKey) apiKey = settings.services.comments.apiKey;
+    else if (typeLower.includes('share') && settings.services?.shares?.apiKey) apiKey = settings.services.shares.apiKey;
+    else if (typeLower.includes('repost') && settings.services?.reposts?.apiKey) apiKey = settings.services.reposts.apiKey;
+    else if (typeLower.includes('save') && settings.services?.saves?.apiKey) apiKey = settings.services.saves.apiKey;
+    else if ((typeLower.includes('reach') || typeLower.includes('impression') || typeLower.includes('visit')) && settings.services?.reach?.apiKey) apiKey = settings.services.reach.apiKey;
+
     const result = await executeSmmPanelRequest({
       apiUrl: settings.apiUrl,
-      apiKey: settings.globalApiKey,
+      apiKey,
       action: 'status',
       orderId: String(orderId)
     });
