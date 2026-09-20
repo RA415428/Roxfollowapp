@@ -1,5 +1,6 @@
 import { cert, getApp, getApps, initializeApp } from 'firebase-admin/app';
 import { getMessaging } from 'firebase-admin/messaging';
+import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
 
 import express from 'express';
 import cors from 'cors';
@@ -201,8 +202,53 @@ function savePersistedState() {
   }
 }
 
-// Load persisted state on server start
+// Load local state immediately so the server starts fast.
 loadPersistedState();
+
+// Then refresh Admin Config from durable Firestore in the background.
+// This prevents Render restarts/sleep/redeploys from restoring old rates.
+void loadAdminConfigFromFirestore().then((remoteConfig) => {
+  if (!remoteConfig || typeof remoteConfig !== 'object') return;
+
+  globalAdminConfig = {
+    ...globalAdminConfig,
+    ...remoteConfig,
+    ads: {
+      ...globalAdminConfig.ads,
+      ...(remoteConfig.ads || {})
+    },
+    pricing: {
+      ...globalAdminConfig.pricing,
+      ...(remoteConfig.pricing || {})
+    },
+    announcement: {
+      ...globalAdminConfig.announcement,
+      ...(remoteConfig.announcement || {})
+    },
+    smmApi: {
+      ...globalAdminConfig.smmApi,
+      ...(remoteConfig.smmApi || {})
+    },
+    appUpdate: {
+      ...(globalAdminConfig.appUpdate || DEFAULT_ADMIN_CONFIG.appUpdate || {}),
+      ...(remoteConfig.appUpdate || {})
+    },
+    coinPackages: Array.isArray(remoteConfig.coinPackages) && remoteConfig.coinPackages.length
+      ? remoteConfig.coinPackages
+      : globalAdminConfig.coinPackages,
+    subscriptionPackage:
+      remoteConfig.subscriptionPackage || globalAdminConfig.subscriptionPackage,
+    lastUpdated:
+      remoteConfig.lastUpdated || globalAdminConfig.lastUpdated || Date.now()
+  };
+
+  // Refresh local fallback after durable config is loaded.
+  savePersistedState();
+
+  console.log('[CONFIG] Admin config synchronized from durable Firestore.');
+}).catch((error) => {
+  console.warn('[CONFIG] Background Firestore config sync failed:', error?.message || error);
+});
 
 // Serve ads.txt for Google AdSense verification
 app.get('/ads.txt', (req, res) => {
@@ -710,6 +756,51 @@ function getFirebaseAdminApp() {
   }
 }
 
+/**
+ * Durable Admin Config storage.
+ *
+ * Render's local filesystem is NOT treated as permanent storage.
+ * Firestore is the durable source of truth for Admin configuration.
+ * Local state remains as a fallback so the API can still respond during
+ * a temporary Firebase/network outage.
+ */
+async function saveAdminConfigToFirestore(config: any): Promise<boolean> {
+  try {
+    const firebaseApp = getFirebaseAdminApp();
+    if (!firebaseApp) return false;
+
+    const firestore = getAdminFirestore(firebaseApp);
+    await firestore.collection('config').doc('global').set(config, { merge: true });
+
+    console.log('[CONFIG] Durable Firestore save successful.');
+    return true;
+  } catch (error: any) {
+    console.warn('[CONFIG] Firestore durable save failed:', error?.message || error);
+    return false;
+  }
+}
+
+async function loadAdminConfigFromFirestore(): Promise<any | null> {
+  try {
+    const firebaseApp = getFirebaseAdminApp();
+    if (!firebaseApp) return null;
+
+    const firestore = getAdminFirestore(firebaseApp);
+    const snap = await firestore.collection('config').doc('global').get();
+
+    if (!snap.exists) return null;
+
+    const data = snap.data();
+    if (!data || typeof data !== 'object') return null;
+
+    console.log('[CONFIG] Durable Firestore config loaded.');
+    return data;
+  } catch (error: any) {
+    console.warn('[CONFIG] Firestore config load failed:', error?.message || error);
+    return null;
+  }
+}
+
 
 app.get('/api/notifications/status', (req, res) => {
   const credentialsConfigured = Boolean(
@@ -813,7 +904,7 @@ app.get('/api/config', (req, res) => {
 });
 
 // 2. Update Admin Config (From Admin Panel)
-app.post('/api/config', (req, res) => {
+app.post('/api/config', async (req, res) => {
   try {
     const updated = req.body;
     if (updated && typeof updated === 'object') {
@@ -845,7 +936,16 @@ app.post('/api/config', (req, res) => {
           ...(updated.appUpdate || {})
         }
       };
+      // Local disk is only a fast fallback/cache.
       savePersistedState();
+
+      // Firestore is the durable source of truth. Do not wait forever:
+      // the response remains fast even when Firebase is temporarily slow.
+      await Promise.race([
+        saveAdminConfigToFirestore(globalAdminConfig),
+        new Promise((resolve) => setTimeout(() => resolve(false), 5000))
+      ]);
+
       res.json({ success: true, config: globalAdminConfig });
     } else {
       res.status(400).json({ success: false, error: 'Invalid config format' });

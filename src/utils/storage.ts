@@ -315,7 +315,7 @@ export async function fetchServerAdminConfig(): Promise<AdminConfig | null> {
   try {
     // 1. Try Firestore first with 8s timeout
     const docRef = doc(db, 'config', 'global');
-    const docSnap = await withTimeout(getDoc(docRef), 8000);
+    const docSnap = await withTimeout(getDoc(docRef), 4000);
     if (docSnap.exists()) {
       const firestoreConfig = sanitizeAdminConfig(docSnap.data() as AdminConfig);
       if (firestoreConfig) {
@@ -354,7 +354,7 @@ export async function fetchServerAdminConfig(): Promise<AdminConfig | null> {
   }
 
   try {
-    const res = await fetch(getApiUrl('/api/config'));
+    const res = await fetch(getApiUrl('/api/config'), { cache: 'no-store' });
     if (res.ok) {
       const data = await res.json();
       if (data && data.success && data.config) {

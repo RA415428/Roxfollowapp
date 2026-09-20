@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
-import { initializeFirestore, getFirestore, Firestore, setLogLevel, memoryLocalCache } from 'firebase/firestore';
+import { initializeFirestore, getFirestore, Firestore, setLogLevel, memoryLocalCache, persistentLocalCache } from 'firebase/firestore';
 import { getAuth, Auth, GoogleAuthProvider } from 'firebase/auth';
 import firebaseConfigJson from '../../firebase-applet-config.json';
 
@@ -29,7 +29,11 @@ try {
   db = initializeFirestore(
     app,
     {
-      localCache: memoryLocalCache(),
+      // Keep Firestore data available locally so the app can continue
+      // using the last known data when the network is slow/unavailable.
+      // If persistent storage is unavailable in a particular WebView,
+      // the catch block below automatically falls back to memory cache.
+      localCache: persistentLocalCache(),
       experimentalForceLongPolling: true,
     },
     databaseId
