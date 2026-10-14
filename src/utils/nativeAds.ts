@@ -3,6 +3,8 @@ import { registerPlugin } from '@capacitor/core';
 export interface UnityAdsNativePlugin {
   isAvailable(): Promise<{ available: boolean }>;
   showRewardedAd(): Promise<{ requested: boolean }>;
+  showBanner(options: { topMarginDp: number }): Promise<{ shown: boolean }>;
+  hideBanner(): Promise<{ hidden: boolean }>;
 }
 
 const UnityAdsNative = registerPlugin<UnityAdsNativePlugin>('UnityAdsNative');
@@ -46,5 +48,26 @@ export async function isNativeAdReady(): Promise<boolean> {
   } catch (e) {
     console.warn('Unity native ad bridge error:', e);
     return false;
+  }
+}
+
+
+export async function showNativeUnityBanner(topMarginDp = 62): Promise<boolean> {
+  if (!isNativeApp()) return false;
+  try {
+    const result = await UnityAdsNative.showBanner({ topMarginDp });
+    return !!result.shown;
+  } catch (e) {
+    console.warn('Unity banner bridge error:', e);
+    return false;
+  }
+}
+
+export async function hideNativeUnityBanner(): Promise<void> {
+  if (!isNativeApp()) return;
+  try {
+    await UnityAdsNative.hideBanner();
+  } catch (e) {
+    console.warn('Unity banner hide error:', e);
   }
 }

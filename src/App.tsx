@@ -27,14 +27,14 @@ import {
   updateOrderStatus
 } from './utils/storage';
 import { DEFAULT_ADMIN_CONFIG } from './utils/defaultAdminConfig';
-import { submitOrderToSmmApi, fetchSmmOrderStatus } from './utils/smmService';
+import { fetchSmmOrderStatus } from './utils/smmService';
 import { db } from './lib/firebase';
 import { doc, setDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
 
 import { TopBar } from './components/TopBar';
 import { BottomNavBar } from './components/BottomNavBar';
 import { requestNativeRewardedAd } from './utils/nativeAds';
-import { AdBanner } from './components/AdBanner';
+import { UnityBannerAd } from './components/UnityBannerAd';
 import { PopunderHandler } from './components/PopunderHandler';
 import { AdModal } from './components/AdModal';
 import { PaymentModal } from './components/PaymentModal';
@@ -894,18 +894,9 @@ export function App() {
       timestamp: newOrder.timestamp || newOrder.createdAt || now
     };
 
-    // 3. Auto-Forward to SMM API if enabled in Admin Panel
+    // Server is the single SMM forwarding owner; do not block order UI here.
     if (adminConfig.smmApi.enabled && adminConfig.smmApi.autoForward) {
-      const apiRes = await submitOrderToSmmApi(finalOrder, adminConfig.smmApi);
-      if (apiRes.success) {
-        finalOrder = {
-          ...finalOrder,
-          status: 'IN_PROGRESS',
-          smmOrderId: apiRes.orderId,
-          smmResponse: apiRes.rawResponse
-        };
-        handleShowToast(`Order auto-sent to SMM API! Order ID: ${apiRes.orderId}`);
-      }
+      finalOrder = { ...finalOrder, status: 'PROCESSING', smmAutoForwardAttempted: false };
     }
 
     const updatedOrdersList = [finalOrder, ...orders];
@@ -915,10 +906,26 @@ export function App() {
     // Direct Firestore upsert and Server API push for immediate Admin Panel reflection
     if (finalOrder.id) {
       setDoc(doc(db, 'orders', finalOrder.id), finalOrder, { merge: true }).catch(() => {});
+      // Fire-and-forget: UI/Firestore update does not wait for the SMM panel.
       fetch(getApiUrl('/api/orders'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(finalOrder)
+      }).then(async (response) => {
+        if (!response.ok) return;
+        const payload = await response.json().catch(() => null);
+        const serverOrder = Array.isArray(payload?.orders)
+          ? payload.orders.find((item: Order) => item?.id === finalOrder.id)
+          : null;
+        if (!serverOrder) return;
+        setOrders((current) => current.map((item) =>
+          item.id === serverOrder.id ? { ...item, ...serverOrder } : item));
+        setLastPlacedOrder((current) =>
+          current?.id === serverOrder.id ? { ...current, ...serverOrder } : current);
+        setDoc(doc(db, 'orders', serverOrder.id), serverOrder, { merge: true }).catch(() => {});
+        if (serverOrder.smmOrderId) {
+          handleShowToast(`Order sent to SMM panel. ID: ${serverOrder.smmOrderId}`);
+        }
       }).catch(() => {});
     }
 
@@ -1349,17 +1356,8 @@ export function App() {
           isOnline={isOnline}
         />
 
-        {/* Banner Ad placed at top under TopBar locked in position */}
-        <div className="w-full max-w-[320px] mx-auto min-h-[50px] overflow-hidden my-1 relative shrink-0">
-          <AdBanner
-            id="top_bar_banner"
-            rewardCoins={adminConfig.ads?.coinsPerBannerClick ?? 5}
-            smartlinkUrl={adminConfig.ads?.directSmartlinkUrl}
-            onRewardClaim={(coins) => handleRewardEarned(coins, false)}
-            width={320}
-            height={50}
-          />
-        </div>
+        {/* Native Unity 320x50 banner directly below TopBar. */}
+        <UnityBannerAd />
 
         <main className="flex-1 w-full max-w-full overflow-x-clip pb-24">
           {activeTab === 'HOME' && (

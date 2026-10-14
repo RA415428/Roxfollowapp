@@ -4,7 +4,7 @@ import {
   Video, Rocket, Shirt, Dumbbell, Utensils, Brush, Target, Zap, Camera, Plane
 } from 'lucide-react';
 import { hashtagCategories } from '../data/appData';
-import { AdBanner } from '../components/AdBanner';
+
 import { AdminConfig, UserWallet } from '../types';
 import { copyToClipboard } from '../utils/clipboard';
 
@@ -111,19 +111,6 @@ export const HashtagsScreen: React.FC<HashtagsScreenProps> = ({
           );
         })}
       </div>
-
-      {/* Compact Sponsored Ad locked right below categories and above tags */}
-      <div className="w-full max-w-[320px] mx-auto min-h-[50px] overflow-hidden my-1 relative shrink-0">
-        <AdBanner
-          id="hashtags_middle_banner"
-          smartlinkUrl={adminConfig?.ads?.directSmartlinkUrl || "https://doubtfulimpatient.com/bhetpw4me?key=b10856b9df41e998764e3e76a118f915"}
-          rewardCoins={adminConfig?.ads?.coinsPerBannerClick ?? 5}
-          onRewardClaim={(c) => onRewardClaim && onRewardClaim(c, false)}
-          width={320}
-          height={50}
-        />
-      </div>
-
       {/* Selected Category Tags Panel */}
       {activeCategory && (
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-3 shadow-lg space-y-2">

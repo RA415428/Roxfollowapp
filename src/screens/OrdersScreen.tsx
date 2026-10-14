@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Clock, CheckCircle2, Loader2, ExternalLink, Search, RefreshCw, ShoppingBag, CreditCard, XCircle, Copy, Check, Sparkles, AlertCircle } from 'lucide-react';
 import { Order, OrderStatus, PaymentRequest, UserWallet, AdminConfig } from '../types';
 import { ServiceIcon } from '../components/ServiceIcon';
-import { AdBanner } from '../components/AdBanner';
+
 import { formatCoins } from '../utils/format';
 import { fetchPaymentRequests, subscribeToPaymentRequests } from '../utils/storage';
 
@@ -220,15 +220,6 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
           )}
         </div>
       </div>
-
-      {/* Clean Sponsored Horizontal Banner Ad with Click & Earn Coins */}
-      <AdBanner
-        id="history_horizontal_banner"
-        smartlinkUrl={adminConfig?.ads?.directSmartlinkUrl || "https://doubtfulimpatient.com/bhetpw4me?key=b10856b9df41e998764e3e76a118f915"}
-        rewardCoins={adminConfig?.ads?.coinsPerBannerClick ?? 5}
-        onRewardClaim={(c) => onRewardClaim && onRewardClaim(c, false)}
-      />
-
       {/* CONTENT VIEW 1: SMM Orders List */}
       {activeMode === 'ORDERS' && (
         filteredOrders.length === 0 ? (

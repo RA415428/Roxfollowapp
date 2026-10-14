@@ -42,6 +42,7 @@ app.use('/updates', express.static(UPDATES_DIR));
 // Real-Time Central Data Store in Server Memory & Disk Persistence
 let globalAdminConfig = { ...DEFAULT_ADMIN_CONFIG };
 let globalOrders: any[] = [];
+const pendingSmmOrderIds = new Set<string>();
 let globalUsersMap: Record<string, any> = {
   '100001': {
     id: 'usr_100001',
@@ -1135,9 +1136,11 @@ app.post('/api/orders', async (req, res) => {
         globalAdminConfig.smmApi.enabled &&
         globalAdminConfig.smmApi.autoForward &&
         !targetOrder.smmOrderId &&
-        !targetOrder.smmAutoForwardAttempted
+        !targetOrder.smmAutoForwardAttempted &&
+        !pendingSmmOrderIds.has(String(targetOrder.id))
       ) {
         targetOrder.smmAutoForwardAttempted = true;
+        pendingSmmOrderIds.add(String(targetOrder.id));
 
         let serviceId = targetOrder.serviceId || '';
         let apiKey = globalAdminConfig.smmApi.globalApiKey;
@@ -1192,6 +1195,8 @@ app.post('/api/orders', async (req, res) => {
           }
         }
       }
+
+      pendingSmmOrderIds.delete(String(targetOrder.id));
 
       if (idx >= 0) {
         globalOrders[idx] = { ...globalOrders[idx], ...targetOrder };
