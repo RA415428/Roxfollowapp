@@ -146,6 +146,9 @@ public class UnityAdsPlugin extends Plugin {
                     }
 
                     @Override
+                    public void onBannerShown(BannerView shownBanner) { }
+
+                    @Override
                     public void onBannerClick(BannerView clickedBanner) { }
 
                     @Override
