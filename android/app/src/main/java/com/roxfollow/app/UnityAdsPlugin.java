@@ -83,15 +83,6 @@ public class UnityAdsPlugin extends Plugin {
             try {
                 FrameLayout content = activity.findViewById(android.R.id.content);
 
-                // Keep an already loaded banner instead of reloading it.
-                if (unityBannerView != null
-                    && unityBannerView.getParent() == content) {
-                    JSObject ret = new JSObject();
-                    ret.put("shown", true);
-                    call.resolve(ret);
-                    return;
-                }
-
                 if (unityBannerAd != null) {
                     unityBannerAd.destroy();
                     unityBannerAd = null;
@@ -123,8 +114,6 @@ public class UnityAdsPlugin extends Plugin {
                                 );
                             params.topMargin = dp(topMarginDp);
                             content.addView(loadedBanner, params);
-                            loadedBanner.setElevation(dp(8));
-                            loadedBanner.bringToFront();
                             unityBannerView = loadedBanner;
 
                             JSObject ret = new JSObject();
