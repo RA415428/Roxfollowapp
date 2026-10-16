@@ -1,36 +1,53 @@
 import { useEffect } from 'react';
-import { isNativeApp, showNativeUnityBanner, hideNativeUnityBanner } from '../utils/nativeAds';
+import {
+  isNativeApp,
+  showNativeUnityBanner,
+  hideNativeUnityBanner,
+} from '../utils/nativeAds';
 
-/** Native-only Unity banner; retry while Unity Ads initializes or loads. */
+/** Keep retrying on native Android until Unity reports that the banner loaded. */
 export function UnityBannerAd() {
   useEffect(() => {
     if (!isNativeApp()) return;
-    let cancelled = false;
-    let attempts = 0;
-    let retryTimer: ReturnType<typeof setTimeout> | undefined;
 
-    const show = async () => {
-      if (cancelled || attempts >= 10) return;
-      attempts += 1;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let delay = 3000;
+
+    const tryShow = async () => {
+      if (cancelled) return;
+
+      let shown = false;
       try {
-        const shown = await showNativeUnityBanner(62);
-        if (!shown && !cancelled && attempts < 10) {
-          retryTimer = setTimeout(show, 3000);
-        }
+        shown = await showNativeUnityBanner(62);
       } catch (error) {
-        console.warn('Unity banner unavailable:', error);
-        if (!cancelled && attempts < 10) {
-          retryTimer = setTimeout(show, 3000);
-        }
+        console.warn('Unity banner attempt failed:', error);
       }
+
+      if (cancelled) return;
+
+      if (shown) {
+        delay = 15000;
+      } else {
+        delay = Math.min(delay + 2000, 30000);
+      }
+
+      timer = setTimeout(tryShow, delay);
     };
 
-    show();
+    void tryShow();
+
     return () => {
       cancelled = true;
-      if (retryTimer) clearTimeout(retryTimer);
-      hideNativeUnityBanner().catch(() => {});
+      if (timer) clearTimeout(timer);
+      void hideNativeUnityBanner();
     };
   }, []);
-  return <div aria-hidden="true" className="w-full h-[50px] shrink-0 pointer-events-none" />;
+
+  return (
+    <div
+      aria-hidden="true"
+      className="w-full h-[50px] shrink-0 pointer-events-none"
+    />
+  );
 }
