@@ -36,7 +36,7 @@ export function UnityBannerAd() {
       timer = setTimeout(tryShow, 2000);
     };
 
-    void tryShow();
+    timer = setTimeout(() => { void tryShow(); }, 1500);
 
     return () => {
       cancelled = true;
