@@ -5,34 +5,35 @@ import {
   hideNativeUnityBanner,
 } from '../utils/nativeAds';
 
-/** Keep retrying on native Android until Unity reports that the banner loaded. */
 export function UnityBannerAd() {
   useEffect(() => {
     if (!isNativeApp()) return;
 
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    let delay = 3000;
+    let requesting = false;
 
     const tryShow = async () => {
-      if (cancelled) return;
+      if (cancelled || requesting) return;
+      requesting = true;
 
       let shown = false;
       try {
         shown = await showNativeUnityBanner(62);
       } catch (error) {
         console.warn('Unity banner attempt failed:', error);
+      } finally {
+        requesting = false;
       }
 
       if (cancelled) return;
 
       if (shown) {
-        delay = 15000;
-      } else {
-        delay = Math.min(delay + 2000, 30000);
+        console.log('Unity banner loaded successfully');
+        return;
       }
 
-      timer = setTimeout(tryShow, delay);
+      timer = setTimeout(tryShow, 2000);
     };
 
     void tryShow();

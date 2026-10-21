@@ -1,6 +1,8 @@
 package com.roxfollow.app;
 
 import android.app.Activity;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -106,11 +108,32 @@ public class UnityAdsPlugin extends Plugin {
 
                 unityBannerAd = banner;
 
+                final Handler bannerTimeoutHandler =
+                    new Handler(Looper.getMainLooper());
+                final boolean[] completed = {false};
+                final Runnable[] timeoutTask = new Runnable[1];
+
+                timeoutTask[0] = () -> {
+                    if (completed[0] || unityBannerAd != banner) return;
+                    completed[0] = true;
+                    unityBannerAd = null;
+                    unityBannerView = null;
+                    try {
+                        banner.destroy();
+                    } catch (Exception ignored) { }
+                    JSObject ret = new JSObject();
+                    ret.put("shown", false);
+                    ret.put("error", "Unity banner load timed out");
+                    call.resolve(ret);
+                };
+
                 banner.setListener(new BannerView.IListener() {
                     @Override
                     public void onBannerLoaded(BannerView loadedBanner) {
                         activity.runOnUiThread(() -> {
-                            if (unityBannerAd != banner) return;
+                            if (unityBannerAd != banner || completed[0]) return;
+                            completed[0] = true;
+                            bannerTimeoutHandler.removeCallbacks(timeoutTask[0]);
 
                             ViewGroup parent = (ViewGroup) loadedBanner.getParent();
                             if (parent != null) parent.removeView(loadedBanner);
@@ -139,7 +162,9 @@ public class UnityAdsPlugin extends Plugin {
                         BannerErrorInfo errorInfo
                     ) {
                         activity.runOnUiThread(() -> {
-                            if (unityBannerAd != banner) return;
+                            if (unityBannerAd != banner || completed[0]) return;
+                            completed[0] = true;
+                            bannerTimeoutHandler.removeCallbacks(timeoutTask[0]);
 
                             unityBannerAd = null;
                             unityBannerView = null;
@@ -166,6 +191,7 @@ public class UnityAdsPlugin extends Plugin {
                     public void onBannerLeftApplication(BannerView leftBanner) { }
                 });
 
+                bannerTimeoutHandler.postDelayed(timeoutTask[0], 10000);
                 banner.load();
             } catch (Exception error) {
                 JSObject ret = new JSObject();
