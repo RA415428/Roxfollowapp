@@ -7,6 +7,7 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
+import android.widget.Toast;
 import android.util.TypedValue;
 
 import com.unity3d.ads.UnityAds;
@@ -24,6 +25,22 @@ import com.roxfollow.app.ads.UnityAdsManager;
 public class UnityAdsPlugin extends Plugin {
     private BannerView unityBannerAd;
     private View unityBannerView;
+    private boolean bannerErrorToastShown = false;
+
+    // Show only the first banner failure per app session.
+    private void reportBannerError(String message) {
+        if (bannerErrorToastShown) return;
+        bannerErrorToastShown = true;
+        android.content.Context context = getContext();
+        if (context == null) return;
+        new Handler(Looper.getMainLooper(), null).post(() ->
+            Toast.makeText(
+                context,
+                "Unity banner: " + message,
+                Toast.LENGTH_LONG
+            ).show()
+        );
+    }
 
     private int dp(float value) {
         return (int) TypedValue.applyDimension(
@@ -72,6 +89,9 @@ public class UnityAdsPlugin extends Plugin {
         Activity activity = getActivity();
 
         if (activity == null || !UnityAds.isInitialized()) {
+            reportBannerError(activity == null
+                ? "Activity unavailable"
+                : "Unity Ads is not initialized");
             JSObject ret = new JSObject();
             ret.put("shown", false);
             ret.put("error", "Unity Ads is not initialized");
@@ -122,6 +142,7 @@ public class UnityAdsPlugin extends Plugin {
                         banner.destroy();
                     } catch (Exception ignored) { }
                     JSObject ret = new JSObject();
+                    reportBannerError("load timed out after 10 seconds");
                     ret.put("shown", false);
                     ret.put("error", "Unity banner load timed out");
                     call.resolve(ret);
@@ -174,6 +195,9 @@ public class UnityAdsPlugin extends Plugin {
 
                             unityBannerAd = null;
                             unityBannerView = null;
+                            reportBannerError(errorInfo == null
+                                ? "load failed (no details)"
+                                : errorInfo.errorMessage);
 
                             JSObject ret = new JSObject();
                             ret.put("shown", false);
@@ -200,6 +224,7 @@ public class UnityAdsPlugin extends Plugin {
                 bannerTimeoutHandler.postDelayed(timeoutTask[0], 10000);
                 banner.load();
             } catch (Exception error) {
+                reportBannerError("exception: " + String.valueOf(error.getMessage()));
                 JSObject ret = new JSObject();
                 ret.put("shown", false);
                 ret.put("error", String.valueOf(error.getMessage()));
