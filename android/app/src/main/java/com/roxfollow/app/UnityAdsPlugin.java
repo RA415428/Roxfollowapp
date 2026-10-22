@@ -108,6 +108,17 @@ public class UnityAdsPlugin extends Plugin {
                 // Keep an already loaded banner instead of reloading it.
                 if (unityBannerView != null
                     && unityBannerView.getParent() == content) {
+                    android.view.ViewGroup.LayoutParams existingParams =
+                        unityBannerView.getLayoutParams();
+                    if (existingParams instanceof FrameLayout.LayoutParams) {
+                        FrameLayout.LayoutParams bannerParams =
+                            (FrameLayout.LayoutParams) existingParams;
+                        int wantedMargin = dp(topMarginDp);
+                        if (bannerParams.topMargin != wantedMargin) {
+                            bannerParams.topMargin = wantedMargin;
+                            unityBannerView.setLayoutParams(bannerParams);
+                        }
+                    }
                     JSObject ret = new JSObject();
                     ret.put("shown", true);
                     call.resolve(ret);
