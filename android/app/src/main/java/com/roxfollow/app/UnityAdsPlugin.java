@@ -146,8 +146,14 @@ public class UnityAdsPlugin extends Plugin {
                                 );
                             params.topMargin = dp(topMarginDp);
                             content.addView(loadedBanner, params);
-                            loadedBanner.setElevation(dp(8));
+                            loadedBanner.setVisibility(View.VISIBLE);
+                            loadedBanner.setAlpha(1f);
+                            loadedBanner.setElevation(dp(100));
+                            loadedBanner.setTranslationZ(dp(100));
+                            content.bringChildToFront(loadedBanner);
                             loadedBanner.bringToFront();
+                            content.requestLayout();
+                            content.invalidate();
                             unityBannerView = loadedBanner;
 
                             JSObject ret = new JSObject();
