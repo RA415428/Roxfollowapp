@@ -1,5 +1,6 @@
 package com.roxfollow.app;
 
+import android.util.Log;
 import android.app.Activity;
 import android.os.Handler;
 import android.os.Looper;
@@ -29,17 +30,7 @@ public class UnityAdsPlugin extends Plugin {
 
     // Show only the first banner failure per app session.
     private void reportBannerError(String message) {
-        if (bannerErrorToastShown) return;
-        bannerErrorToastShown = true;
-        android.content.Context context = getContext();
-        if (context == null) return;
-        new Handler(Looper.getMainLooper(), null).post(() ->
-            Toast.makeText(
-                context,
-                "Unity banner: " + message,
-                Toast.LENGTH_LONG
-            ).show()
-        );
+        Log.e("UnityAdsPlugin", "Unity banner: " + message);
     }
 
     private int dp(float value) {
