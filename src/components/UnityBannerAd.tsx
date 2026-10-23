@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import {
   isNativeApp,
   showNativeUnityBanner,
@@ -6,6 +6,7 @@ import {
 } from '../utils/nativeAds';
 
 export function UnityBannerAd() {
+  const bannerAnchorRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!isNativeApp()) return;
 
@@ -18,13 +19,21 @@ export function UnityBannerAd() {
     const syncBannerWithScroll = () => {
       if (cancelled) return;
       if (scrollTimer) clearTimeout(scrollTimer);
+
       scrollTimer = setTimeout(() => {
         if (cancelled) return;
-        const nextMargin = 62 - Math.round(window.scrollY);
+
+        const anchor = bannerAnchorRef.current;
+        if (!anchor) return;
+
+        // Match the native banner to the real on-screen position
+        // of the placeholder directly beneath the TopBar.
+        const nextMargin = Math.round(anchor.getBoundingClientRect().top);
         if (nextMargin === lastMargin) return;
+
         lastMargin = nextMargin;
         void showNativeUnityBanner(nextMargin).catch((error) => {
-          console.warn('Unity banner scroll sync failed:', error);
+          console.warn('Unity banner position sync failed:', error);
         });
       }, 40);
     };
@@ -52,12 +61,12 @@ export function UnityBannerAd() {
       timer = setTimeout(tryShow, 2000);
     };
 
-    window.addEventListener('scroll', syncBannerWithScroll, { passive: true });
+    document.addEventListener('scroll', syncBannerWithScroll, { passive: true, capture: true });
     timer = setTimeout(() => { void tryShow(); }, 1500);
 
     return () => {
       cancelled = true;
-      window.removeEventListener('scroll', syncBannerWithScroll);
+      document.removeEventListener('scroll', syncBannerWithScroll, true);
       if (timer) clearTimeout(timer);
       if (scrollTimer) clearTimeout(scrollTimer);
       void hideNativeUnityBanner();
@@ -66,6 +75,7 @@ export function UnityBannerAd() {
 
   return (
     <div
+      ref={bannerAnchorRef}
       aria-hidden="true"
       className="w-full h-[50px] shrink-0 pointer-events-none"
     />
