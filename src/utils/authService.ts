@@ -1282,15 +1282,35 @@ export async function signInWithGoogle(customWelcomeBonus?: number): Promise<Goo
   try {
     await FirebaseAuthentication.signOut().catch(() => {});
     const result = await FirebaseAuthentication.signInWithGoogle({ useCredentialManager: false });
-    const firebaseUser = auth.currentUser;
-    if (firebaseUser === null) {
-      return { success: false, error: 'Google sign-in failed. No user profile returned.' };
+
+    // Native authentication may not immediately update the Firebase JS SDK.
+    // Wait briefly for the JS auth state before reporting a missing profile.
+    let firebaseUser = auth.currentUser;
+    if (!firebaseUser && result.user?.uid) {
+      for (let attempt = 0; attempt < 20 && !firebaseUser; attempt++) {
+        await new Promise(resolve => setTimeout(resolve, 250));
+        firebaseUser = auth.currentUser;
+      }
     }
-    return await handleFirebaseAuthUser(firebaseUser, customWelcomeBonus);
+
+    if (firebaseUser) {
+      return await handleFirebaseAuthUser(firebaseUser, customWelcomeBonus);
+    }
+
+    console.error('Native Google sign-in returned a user, but Firebase JS auth has no current user.', {
+      nativeUid: result.user?.uid ?? null,
+      nativeEmail: result.user?.email ?? null,
+      hasCredential: !!result.credential,
+    });
+    return {
+      success: false,
+      error: 'Google login completed but Firebase session was not synced. Please try again.'
+    };
   } catch (err: any) {
     if (err?.message && err.message.toLowerCase().includes('cancel')) {
       return { success: false, error: 'Google Sign-In was cancelled.' };
     }
+    console.error('Google sign-in error:', err);
     return { success: false, error: err?.message || 'Google sign-in failed.' };
   }
 }
