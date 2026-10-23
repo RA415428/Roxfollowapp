@@ -1281,7 +1281,7 @@ export function isAndroidWebView(): boolean {
 export async function signInWithGoogle(customWelcomeBonus?: number): Promise<GoogleAuthResult> {
   try {
     await FirebaseAuthentication.signOut().catch(() => {});
-    const result = await FirebaseAuthentication.signInWithGoogle();
+    const result = await FirebaseAuthentication.signInWithGoogle({ useCredentialManager: false });
     const firebaseUser = auth.currentUser;
     if (firebaseUser === null) {
       return { success: false, error: 'Google sign-in failed. No user profile returned.' };
