@@ -1283,28 +1283,30 @@ export async function signInWithGoogle(customWelcomeBonus?: number): Promise<Goo
     await FirebaseAuthentication.signOut().catch(() => {});
     const result = await FirebaseAuthentication.signInWithGoogle({ useCredentialManager: false });
 
-    // Native authentication may not immediately update the Firebase JS SDK.
-    // Wait briefly for the JS auth state before reporting a missing profile.
+    // Exchange the native Google ID token for a Firebase JS SDK session.
     let firebaseUser = auth.currentUser;
-    if (!firebaseUser && result.user?.uid) {
-      for (let attempt = 0; attempt < 20 && !firebaseUser; attempt++) {
-        await new Promise(resolve => setTimeout(resolve, 250));
-        firebaseUser = auth.currentUser;
-      }
+    const idToken = result.credential?.idToken;
+    const accessToken = result.credential?.accessToken;
+
+    if (!firebaseUser && idToken) {
+      const googleCredential = GoogleAuthProvider.credential(idToken, accessToken ?? undefined);
+      const jsResult = await signInWithCredential(auth, googleCredential);
+      firebaseUser = jsResult.user;
     }
 
     if (firebaseUser) {
       return await handleFirebaseAuthUser(firebaseUser, customWelcomeBonus);
     }
 
-    console.error('Native Google sign-in returned a user, but Firebase JS auth has no current user.', {
+    console.error('Google native sign-in returned no usable Firebase JS session.', {
       nativeUid: result.user?.uid ?? null,
       nativeEmail: result.user?.email ?? null,
-      hasCredential: !!result.credential,
+      hasIdToken: !!idToken,
+      hasAccessToken: !!accessToken,
     });
     return {
       success: false,
-      error: 'Google login completed but Firebase session was not synced. Please try again.'
+      error: 'Google login returned no Firebase ID token. Check Google OAuth configuration.'
     };
   } catch (err: any) {
     if (err?.message && err.message.toLowerCase().includes('cancel')) {
