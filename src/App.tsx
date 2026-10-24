@@ -1227,7 +1227,7 @@ export function App() {
   }, [currentScreen, orders, adminConfig.smmApi]);
 
   // Google Login Gate Screen - Required before entry into main app
-  if (currentScreen !== 'LOADING' && (currentScreen === 'LOGIN' || (!isGoogleAuthenticated && currentScreen !== 'ADMIN'))) {
+  if (currentScreen === 'LOGIN' || (!isGoogleAuthenticated && currentScreen !== 'ADMIN')) {
     return (
       <>
         <LoginScreen
@@ -1257,9 +1257,7 @@ export function App() {
     );
   }
 
-  if (currentScreen === 'LOADING') {
-    return <LoadingScreen isOnline={isOnline} onRetry={() => {}} />;
-  }
+
 
   // Admin Screen Mode
   if (currentScreen === 'ADMIN') {
