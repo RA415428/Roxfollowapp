@@ -1258,19 +1258,7 @@ export function App() {
   }
 
   if (currentScreen === 'LOADING') {
-    if (!isOnline) {
-      return (
-        <LoadingScreen
-          isOnline={isOnline}
-          onRetry={() => {
-            setIsOnline(false);
-            setCurrentScreen('LOADING');
-            window.dispatchEvent(new Event('offline'));
-          }}
-        />
-      );
-    }
-    // If online, don't display "Connecting to Server..." screen
+    return <LoadingScreen isOnline={isOnline} onRetry={() => {}} />;
   }
 
   // Admin Screen Mode

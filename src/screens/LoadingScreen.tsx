@@ -1,13 +1,10 @@
 import React from 'react';
-import { WifiOff, RefreshCw, Loader2, Sparkles, Zap, ShieldCheck } from 'lucide-react';
+import { Loader2, Zap } from 'lucide-react';
 import { APP_LOGO_SRC } from '../assets/appLogoBase64';
 
-interface LoadingScreenProps {
-  isOnline: boolean;
-  onRetry: () => void;
-}
+interface LoadingScreenProps {}
 
-export const LoadingScreen: React.FC<LoadingScreenProps> = ({ isOnline, onRetry }) => {
+export const LoadingScreen: React.FC<LoadingScreenProps> = () => {
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-center select-none relative overflow-hidden">
       {/* Background ambient glow */}
@@ -42,42 +39,12 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({ isOnline, onRetry 
 
         <div className="h-px bg-slate-800/80 w-full" />
 
-        {isOnline ? (
-          <div className="space-y-3 pt-1">
-            <div className="w-12 h-12 rounded-2xl bg-pink-500/10 border border-pink-500/20 flex items-center justify-center mx-auto text-pink-400 shadow-inner">
-              <Loader2 className="w-6 h-6 animate-spin" />
-            </div>
-            <div>
-              <h2 className="text-sm font-bold text-white mb-1">Connecting to Server...</h2>
-              <p className="text-[11px] text-slate-400 leading-relaxed font-medium">
-                Syncing coins wallet and active order statuses...
-              </p>
-            </div>
-            <div className="flex items-center justify-center gap-1.5 text-[10px] text-slate-500 font-medium pt-1">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-              <span>Secure Encrypted Cloud Connection</span>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-3 pt-1">
-            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mx-auto text-red-500">
-              <WifiOff className="w-6 h-6 animate-bounce" />
-            </div>
-            <div>
-              <h2 className="text-sm font-bold text-white mb-1">Please check your internet connection</h2>
-              <p className="text-[11px] text-slate-400 leading-relaxed font-medium">
-                Please connect to the internet. The app will retry automatically.
-              </p>
-            </div>
-            <button
-              onClick={onRetry}
-              className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-red-400 hover:to-red-500 text-slate-950 font-black py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 transition-colors active:opacity-80 shadow-lg shadow-amber-500/20 mt-2"
-            >
-              <RefreshCw className="w-4 h-4" />
-              Check Connection Again
-            </button>
-          </div>
-        )}
+        <div className="flex flex-col items-center gap-3 pt-2">
+          <Loader2 className="w-6 h-6 animate-spin text-pink-400" />
+          <p className="text-[11px] text-slate-400 font-medium">
+            Please wait...
+          </p>
+        </div>
       </div>
     </div>
   );
