@@ -469,6 +469,15 @@ app.post('/api/auth/send-otp', async (req, res) => {
       }
     }
 
+    // Reject password-reset requests for unregistered email addresses.
+    if (!isUserRegistered) {
+      return res.status(404).json({
+        success: false,
+        error: 'This email ID has not been registered.',
+        emailSent: false
+      });
+    }
+
     // Generate Cryptographically Secure 6-Digit OTP
     const otp = crypto.randomInt(100000, 999999).toString();
     const expiresAt = Date.now() + 5 * 60 * 1000; // Strictly 5 minutes validity
