@@ -86,7 +86,7 @@ export function App() {
 
   // Always require Admin Password by default until entered in session
   const [isAdminUnlocked, setIsAdminUnlocked] = useState<boolean>(false);
-  const [currentScreen, setCurrentScreen] = useState<AppScreen>(() => isGoogleAuthActive(loadUserWallet()) ? 'MAIN_APP' : 'LOGIN');
+  const [currentScreen, setCurrentScreen] = useState<AppScreen>('LOADING');
 
   // Atmosphere & Theme Preference (Pink Monsoon Theme by default with live rain)
   const [themeMode, setThemeMode] = useState<'pink-monsoon' | 'classic-dark' | 'light'>(() => {
@@ -152,6 +152,7 @@ export function App() {
     return 'HOME';
   });
   const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
+  const [startupInternetChecked, setStartupInternetChecked] = useState(false);
 
   // Loaded Storage State
   const [adminConfig, setAdminConfig] = useState<AdminConfig>(loadAdminConfig);
@@ -744,26 +745,92 @@ export function App() {
     };
   }, [wallet.coins, wallet.dailyAdsWatched, adminConfig.ads]);
 
-  // Monitor online status
+  // Monitor real internet reachability independently from screen changes.
   useEffect(() => {
-    const handleOnline = () => {
-      setIsOnline(true);
-      if (currentScreen === 'LOADING') {
-        setCurrentScreen('MAIN_APP');
+    let cancelled = false;
+    let retryTimer: number | undefined;
+    let probing = false;
+
+    const probeInternet = async () => {
+      if (cancelled || probing) return;
+      probing = true;
+      const startedAt = Date.now();
+      let connected = false;
+
+      if (navigator.onLine) {
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 1800);
+        try {
+          await fetch('https://www.gstatic.com/generate_204', {
+            method: 'GET',
+            cache: 'no-store',
+            mode: 'no-cors',
+            signal: controller.signal
+          });
+          connected = true;
+        } catch {
+          connected = false;
+        } finally {
+          window.clearTimeout(timeout);
+        }
       }
-    };
-    const handleOffline = () => {
-      setIsOnline(false);
+
+      const remaining = Math.max(0, 2000 - (Date.now() - startedAt));
+      if (remaining) {
+        await new Promise(resolve => window.setTimeout(resolve, remaining));
+      }
+      if (cancelled) {
+        probing = false;
+        return;
+      }
+
+      setStartupInternetChecked(true);
+      setIsOnline(connected);
+
+      if (connected) {
+        setCurrentScreen(previous =>
+          previous === 'LOADING'
+            ? (isGoogleAuthActive(loadUserWallet()) ? 'MAIN_APP' : 'LOGIN')
+            : previous
+        );
+      } else {
+        setCurrentScreen('LOADING');
+        retryTimer = window.setTimeout(() => {
+          probing = false;
+          void probeInternet();
+        }, 2500);
+      }
+      probing = false;
     };
 
+    const handleOnline = () => {
+      if (retryTimer) window.clearTimeout(retryTimer);
+      retryTimer = undefined;
+      probing = false;
+      void probeInternet();
+    };
+
+    const handleOffline = () => {
+      setIsOnline(false);
+      setCurrentScreen('LOADING');
+      if (retryTimer) window.clearTimeout(retryTimer);
+      retryTimer = window.setTimeout(() => {
+        probing = false;
+        void probeInternet();
+      }, 1500);
+    };
+
+    void probeInternet();
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
     return () => {
+      cancelled = true;
+      if (retryTimer) window.clearTimeout(retryTimer);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [currentScreen]);
+  }, []);
 
   const handleShowToast = (msg: string) => {
     setToastMsg(msg);
@@ -1160,7 +1227,7 @@ export function App() {
   }, [currentScreen, orders, adminConfig.smmApi]);
 
   // Google Login Gate Screen - Required before entry into main app
-  if (currentScreen === 'LOGIN' || (!isGoogleAuthenticated && currentScreen !== 'ADMIN')) {
+  if (currentScreen !== 'LOADING' && (currentScreen === 'LOGIN' || (!isGoogleAuthenticated && currentScreen !== 'ADMIN'))) {
     return (
       <>
         <LoginScreen
@@ -1196,8 +1263,9 @@ export function App() {
         <LoadingScreen
           isOnline={isOnline}
           onRetry={() => {
-            setIsOnline(true);
-            setCurrentScreen('MAIN_APP');
+            setIsOnline(false);
+            setCurrentScreen('LOADING');
+            window.dispatchEvent(new Event('offline'));
           }}
         />
       );

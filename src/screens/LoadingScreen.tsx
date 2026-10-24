@@ -60,18 +60,18 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({ isOnline, onRetry 
           </div>
         ) : (
           <div className="space-y-3 pt-1">
-            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mx-auto text-amber-400">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center mx-auto text-red-500">
               <WifiOff className="w-6 h-6 animate-bounce" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-white mb-1">Internet Connection Lost</h2>
+              <h2 className="text-sm font-bold text-white mb-1">Please check your internet connection</h2>
               <p className="text-[11px] text-slate-400 leading-relaxed font-medium">
-                Roxyefollow requires an active internet connection to place orders and sync coin balances.
+                Please connect to the internet. The app will retry automatically.
               </p>
             </div>
             <button
               onClick={onRetry}
-              className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 transition-colors active:opacity-80 shadow-lg shadow-amber-500/20 mt-2"
+              className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-red-400 hover:to-red-500 text-slate-950 font-black py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 transition-colors active:opacity-80 shadow-lg shadow-amber-500/20 mt-2"
             >
               <RefreshCw className="w-4 h-4" />
               Check Connection Again
