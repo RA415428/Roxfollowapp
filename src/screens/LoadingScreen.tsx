@@ -2,9 +2,9 @@ import React from 'react';
 import { Loader2, Zap } from 'lucide-react';
 import { APP_LOGO_SRC } from '../assets/appLogoBase64';
 
-interface LoadingScreenProps {}
+interface LoadingScreenProps { isOnline?: boolean; }
 
-export const LoadingScreen: React.FC<LoadingScreenProps> = () => {
+export const LoadingScreen: React.FC<LoadingScreenProps> = ({ isOnline = true }) => {
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-center select-none relative overflow-hidden">
       {/* Background ambient glow */}
@@ -44,6 +44,11 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = () => {
           <p className="text-[11px] text-slate-400 font-medium">
             Please wait...
           </p>
+          {!isOnline && (
+            <p role="status" className="text-sm font-semibold text-red-500">
+              Please check your internet connection
+            </p>
+          )}
         </div>
       </div>
     </div>

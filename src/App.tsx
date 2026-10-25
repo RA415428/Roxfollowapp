@@ -1226,6 +1226,11 @@ export function App() {
     };
   }, [currentScreen, orders, adminConfig.smmApi]);
 
+  // Keep users on the loading screen until internet connectivity is verified.
+  if (currentScreen === 'LOADING') {
+    return <LoadingScreen isOnline={isOnline} />;
+  }
+
   // Google Login Gate Screen - Required before entry into main app
   if (currentScreen === 'LOGIN' || (!isGoogleAuthenticated && currentScreen !== 'ADMIN')) {
     return (
