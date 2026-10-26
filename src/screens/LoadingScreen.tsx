@@ -9,7 +9,7 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
   isOnline = true,
 }) => {
   return (
-    <main className="min-h-screen w-full bg-slate-950 flex flex-col items-center justify-center text-center p-6">
+    <main className="min-h-screen w-full bg-[#0f0412] flex flex-col items-center justify-center text-center p-6">
       <div className="relative flex items-center justify-center w-24 h-24 mb-7">
         <div
           aria-hidden="true"
