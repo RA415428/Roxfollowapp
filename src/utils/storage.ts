@@ -1114,11 +1114,6 @@ export function subscribeToFirestore(
           });
         }
         window.dispatchEvent(new Event('instaboost_config_updated'));
-        fetch(getApiUrl('/api/config'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data)
-        }).catch(() => {});
         onConfigUpdate(data);
       }
     }
