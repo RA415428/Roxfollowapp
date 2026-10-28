@@ -2125,6 +2125,54 @@ export async function fetchPaymentRequests(): Promise<PaymentRequest[]> {
   );
 }
 
+/**
+ * Real-time listener for a specific user's orders
+ * Queries Firestore for orders where userMemberId matches the given memberId
+ */
+export function subscribeToUserOrders(
+  userMemberId: string,
+  onOrdersUpdate: (orders: Order[]) => void
+) {
+  if (!userMemberId) {
+    onOrdersUpdate([]);
+    return () => {};
+  }
+
+  const cleanMemberId = String(userMemberId).replace(/^#+/, '').trim();
+  const q = query(
+    collection(db, 'orders'),
+    where('userMemberId', '==', cleanMemberId),
+    orderBy('createdAt', 'desc')
+  );
+
+  const unsubscribe = onSnapshot(
+    q,
+    (querySnap) => {
+      const orders: Order[] = [];
+      querySnap.forEach((docSnap) => {
+        const o = docSnap.data() as Order;
+        if (o && o.id) {
+          orders.push(o);
+        }
+      });
+      // Sort newest first (createdAt descending)
+      orders.sort((a, b) => {
+        const timeA = typeof a.createdAt === 'number' ? a.createdAt : (typeof a.timestamp === 'number' ? a.timestamp : 0);
+        const timeB = typeof b.createdAt === 'number' ? b.createdAt : (typeof b.timestamp === 'number' ? b.timestamp : 0);
+        return timeB - timeA;
+      });
+      onOrdersUpdate(orders);
+    },
+    (err) => {
+      console.warn('subscribeToUserOrders error:', err);
+      // Fallback to empty array on error
+      onOrdersUpdate([]);
+    }
+  );
+
+  return unsubscribe;
+}
+
 export function subscribeToPaymentRequests(onRequestsUpdate: (requests: PaymentRequest[]) => void) {
   let stopped = false;
 

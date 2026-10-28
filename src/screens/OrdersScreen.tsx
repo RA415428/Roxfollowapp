@@ -4,7 +4,7 @@ import { Order, OrderStatus, PaymentRequest, UserWallet, AdminConfig } from '../
 import { ServiceIcon } from '../components/ServiceIcon';
 
 import { formatCoins } from '../utils/format';
-import { fetchPaymentRequests, subscribeToPaymentRequests } from '../utils/storage';
+import { fetchPaymentRequests, subscribeToPaymentRequests, subscribeToUserOrders } from '../utils/storage';
 
 interface OrdersScreenProps {
   orders: Order[];
@@ -31,6 +31,7 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
   const [paymentRequests, setPaymentRequests] = useState<PaymentRequest[]>([]);
   const [loadingPayments, setLoadingPayments] = useState(false);
   const [copiedUtr, setCopiedUtr] = useState<string | null>(null);
+  const [realTimeOrders, setRealTimeOrders] = useState<Order[]>([]);
 
   const currentMemberId = wallet?.memberId || '100001';
 
@@ -52,14 +53,60 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
     return () => unsub();
   }, [currentMemberId]);
 
+  // =================== REAL-TIME ORDERS LISTENER ===================
+  // Instantly updates user's order statuses when Admin changes them in Firestore.
+  // This runs independently of App.tsx global orders state so the user sees
+  // COMPLETED/PROCESSING changes immediately without manual refresh.
+  useEffect(() => {
+    const unsubOrders = subscribeToUserOrders(currentMemberId, (freshOrders) => {
+      setRealTimeOrders(freshOrders);
+    });
+    return () => unsubOrders();
+  }, [currentMemberId]);
+
   const handleCopyUtr = (utr: string) => {
     navigator.clipboard.writeText(utr);
     setCopiedUtr(utr);
     setTimeout(() => setCopiedUtr(null), 2000);
   };
 
-  // Filtered Lists
-  const filteredOrders = orders.filter((ord) => {
+  // Merge local orders (from App.tsx) with real-time Firestore orders
+  // Real-time orders take priority for status as they're the freshest from admin updates
+  const mergedOrdersMap = new Map<string, Order>();
+  
+  // First add local orders
+  orders.forEach((ord) => {
+    mergedOrdersMap.set(ord.id, ord);
+  });
+  
+  // Then merge real-time orders (Firestore is source of truth for status)
+  realTimeOrders.forEach((rtOrd) => {
+    const existing = mergedOrdersMap.get(rtOrd.id);
+    if (!existing) {
+      mergedOrdersMap.set(rtOrd.id, rtOrd);
+    } else {
+      // Merge: keep local data but use real-time status, updatedAt, smmOrderId
+      mergedOrdersMap.set(rtOrd.id, {
+        ...existing,
+        status: rtOrd.status,
+        updatedAt: rtOrd.updatedAt || existing.updatedAt,
+        smmOrderId: rtOrd.smmOrderId || existing.smmOrderId,
+        smmResponse: rtOrd.smmResponse || existing.smmResponse,
+        statusReason: rtOrd.statusReason || existing.statusReason,
+        timestamp: rtOrd.timestamp || existing.timestamp,
+        createdAt: rtOrd.createdAt || existing.createdAt,
+      });
+    }
+  });
+  
+  const mergedOrders = Array.from(mergedOrdersMap.values()).sort((a, b) => {
+    const timeA = typeof a.createdAt === 'number' ? a.createdAt : (typeof a.timestamp === 'number' ? a.timestamp : 0);
+    const timeB = typeof b.createdAt === 'number' ? b.createdAt : (typeof b.timestamp === 'number' ? b.timestamp : 0);
+    return timeB - timeA;
+  });
+
+  // Filtered Lists - use mergedOrders for real-time status
+  const filteredOrders = mergedOrders.filter((ord) => {
     // Only show orders belonging to this user (unless admin)
     const isMyOrder = 
       !wallet ||
