@@ -1133,6 +1133,42 @@ export function subscribeToFirestore(
     });
 
     const ordersList = Array.from(ordersMap.values());
+
+    // Recover orders saved by the backend when a Firestore write failed.
+    void (async () => {
+      try {
+        const response = await fetch(getApiUrl('/api/orders'));
+        if (!response.ok) return;
+        const data = await response.json();
+        const serverOrders = Array.isArray(data) ? data : data.orders;
+        if (!Array.isArray(serverOrders)) return;
+
+        const combined = new Map<string, Order>();
+        for (const order of serverOrders) {
+          if (order && order.id) combined.set(String(order.id), order as Order);
+        }
+        // Prefer the newest Firestore snapshot for matching order IDs.
+        for (const order of ordersList) {
+          if (order && order.id) {
+            const previous = combined.get(String(order.id));
+            combined.set(String(order.id), previous ? { ...previous, ...order } : order);
+          }
+        }
+
+        const recovered = Array.from(combined.values()).sort((a, b) => {
+          const timeA = typeof a.timestamp === 'number' ? a.timestamp : (typeof a.createdAt === 'number' ? a.createdAt : 0);
+          const timeB = typeof b.timestamp === 'number' ? b.timestamp : (typeof b.createdAt === 'number' ? b.createdAt : 0);
+          return timeB - timeA;
+        });
+
+        if (recovered.length > 0) {
+          localStorage.setItem(ORDERS_KEY, JSON.stringify(recovered));
+          onOrdersUpdate(recovered);
+        }
+      } catch (error) {
+        console.warn('Backend order recovery temporarily unavailable:', error);
+      }
+    })();
     if (ordersList.length > 0) {
       ordersList.sort((a, b) => {
         const timeA = typeof a.timestamp === 'number' ? a.timestamp : (typeof a.createdAt === 'number' ? a.createdAt : 0);
@@ -2047,46 +2083,116 @@ export async function submitPaymentRequest(payload: {
 }
 
 export async function fetchPaymentRequests(): Promise<PaymentRequest[]> {
+  let firestoreReqs: PaymentRequest[] = [];
+  let serverReqs: PaymentRequest[] = [];
+
   try {
-    // 1. Try Firestore first
     const querySnap = await withTimeout(getDocs(collection(db, 'payment_requests')), 10000);
-    if (!querySnap.empty) {
-      const firestoreReqs: PaymentRequest[] = [];
-      querySnap.forEach((docSnap) => {
-        firestoreReqs.push(docSnap.data() as PaymentRequest);
-      });
-      firestoreReqs.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-      if (firestoreReqs.length > 0) {
-        return firestoreReqs;
-      }
-    }
+    querySnap.forEach((docSnap) => {
+      const record = docSnap.data() as PaymentRequest;
+      firestoreReqs.push({ ...record, id: record.id || docSnap.id });
+    });
   } catch (e) {
-    // fallback to server
+    console.warn('Payment requests Firestore read failed; trying backend:', e);
   }
 
   try {
     const res = await fetch(getApiUrl('/api/payment/list'));
-    const data = await res.json();
-    if (res.ok && data.success) {
-      return data.requests || [];
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && Array.isArray(data.requests)) {
+        serverReqs = data.requests;
+      }
     }
-    return [];
-  } catch (err) {
-    return [];
+  } catch (e) {
+    console.warn('Payment requests backend read failed:', e);
   }
+
+  // Merge by normalized UTR first to avoid showing duplicate copies
+  // of the same payment created independently by Firestore and backend.
+  const merged = new Map<string, PaymentRequest>();
+  for (const record of [...serverReqs, ...firestoreReqs]) {
+    if (!record) continue;
+    const utr = String(record.utrNumber || '').trim().toUpperCase().replace(/[\s-_]/g, '');
+    const key = utr || String(record.id || '');
+    if (!key) continue;
+    const previous = merged.get(key);
+    merged.set(key, previous ? { ...previous, ...record } : record);
+  }
+
+  return Array.from(merged.values()).sort(
+    (a, b) => (Number(b.timestamp) || 0) - (Number(a.timestamp) || 0)
+  );
 }
 
 export function subscribeToPaymentRequests(onRequestsUpdate: (requests: PaymentRequest[]) => void) {
-  return onSnapshot(collection(db, 'payment_requests'), (querySnap) => {
-    const list: PaymentRequest[] = [];
-    querySnap.forEach((docSnap) => {
-      list.push(docSnap.data() as PaymentRequest);
-    });
-    list.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-    onRequestsUpdate(list);
-  }, () => {
-    // Quiet error handler for background tab / closing database state
-  });
+  let stopped = false;
+
+  const mergeAndEmit = async (firestoreRecords?: PaymentRequest[]) => {
+    let serverRecords: PaymentRequest[] = [];
+    try {
+      const res = await fetch(getApiUrl('/api/payment/list'));
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.requests)) serverRecords = data.requests;
+      }
+    } catch {
+      // Keep Firestore updates working when backend is temporarily offline.
+    }
+
+    if (stopped) return;
+
+    let firestoreList = firestoreRecords;
+    if (!firestoreList) {
+      try {
+        const snap = await withTimeout(getDocs(collection(db, 'payment_requests')), 8000);
+        firestoreList = snap.docs.map((d) => {
+          const record = d.data() as PaymentRequest;
+          return { ...record, id: record.id || d.id };
+        });
+      } catch {
+        firestoreList = [];
+      }
+    }
+
+    const merged = new Map<string, PaymentRequest>();
+    for (const record of [...serverRecords, ...(firestoreList || [])]) {
+      if (!record) continue;
+      const utr = String(record.utrNumber || '').trim().toUpperCase().replace(/[\s-_]/g, '');
+      const key = utr || String(record.id || '');
+      if (!key) continue;
+      const previous = merged.get(key);
+      merged.set(key, previous ? { ...previous, ...record } : record);
+    }
+
+    onRequestsUpdate(Array.from(merged.values()).sort(
+      (a, b) => (Number(b.timestamp) || 0) - (Number(a.timestamp) || 0)
+    ));
+  };
+
+  const unsubscribe = onSnapshot(
+    collection(db, 'payment_requests'),
+    (snap) => {
+      const list = snap.docs.map((d) => {
+        const record = d.data() as PaymentRequest;
+        return { ...record, id: record.id || d.id };
+      });
+      void mergeAndEmit(list);
+    },
+    () => {
+      void mergeAndEmit();
+    }
+  );
+
+  // Backend-only payment requests must also appear without a Firestore event.
+  const timer = setInterval(() => void mergeAndEmit(), 12000);
+  void mergeAndEmit();
+
+  return () => {
+    stopped = true;
+    unsubscribe();
+    clearInterval(timer);
+  };
 }
 
 export async function actionPaymentRequest(requestId: string, action: 'APPROVE' | 'REJECT'): Promise<{ success: boolean; message: string }> {
