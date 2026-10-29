@@ -1178,12 +1178,40 @@ export function subscribeToFirestore(
         for (const order of serverOrders) {
           if (order && order.id) combined.set(String(order.id), order as Order);
         }
-        // Prefer the newest Firestore snapshot for matching order IDs.
-        for (const order of ordersList) {
-          if (order && order.id) {
-            const previous = combined.get(String(order.id));
-            combined.set(String(order.id), previous ? { ...previous, ...order } : order);
+        // Merge by update time so an older Firestore status cannot
+        // overwrite a newer status saved by the admin/server.
+        const orderTime = (order: any): number => {
+          const value = order?.updatedAt ?? order?.timestamp ?? order?.createdAt ?? 0;
+          if (typeof value === 'number') return value;
+          if (typeof value === 'string') {
+            const parsed = Date.parse(value);
+            return Number.isFinite(parsed) ? parsed : 0;
           }
+          if (value && typeof value.toMillis === 'function') {
+            return value.toMillis();
+          }
+          return 0;
+        };
+
+        for (const order of ordersList) {
+          if (!order || !order.id) continue;
+          const id = String(order.id);
+          const previous = combined.get(id);
+
+          if (!previous) {
+            combined.set(id, order);
+            continue;
+          }
+
+          const serverTime = orderTime(previous);
+          const firestoreTime = orderTime(order);
+
+          combined.set(
+            id,
+            firestoreTime > serverTime
+              ? { ...previous, ...order }
+              : { ...order, ...previous }
+          );
         }
 
         const recovered = Array.from(combined.values()).sort((a, b) => {
