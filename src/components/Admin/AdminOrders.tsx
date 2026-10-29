@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { 
   ShoppingBag, 
   Search, 
@@ -40,8 +40,78 @@ export const AdminOrders: React.FC<AdminOrdersProps> = ({
   const [forwardingId, setForwardingId] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-  // AdminOrders receives orders via props from App.tsx (which is connected to real-time Firestore)
-  // No duplicate polling or duplicate onSnapshot needed here to prevent update loops.
+  // Keep the latest props available without restarting the polling timer.
+  const ordersRef = useRef(orders);
+  const onUpdateOrdersRef = useRef(onUpdateOrders);
+
+  useEffect(() => {
+    ordersRef.current = orders;
+  }, [orders]);
+
+  useEffect(() => {
+    onUpdateOrdersRef.current = onUpdateOrders;
+  }, [onUpdateOrders]);
+
+  // Poll without overlapping requests; a slow request will not queue more requests.
+  useEffect(() => {
+    let active = true;
+    let inFlight = false;
+
+    const refreshOrders = async () => {
+      if (!active || inFlight) return;
+      inFlight = true;
+
+      try {
+        const latest = await fetchServerOrders();
+        if (!active || !latest || latest.length === 0) return;
+
+        const current = ordersRef.current;
+        const byId = new Map<string, Order>();
+
+        const getTime = (o: Order) =>
+          Number(o.updatedAt || o.timestamp || o.createdAt || 0);
+
+        current.forEach((o) => {
+          if (o && o.id) byId.set(o.id, o);
+        });
+
+        latest.forEach((fresh) => {
+          if (!fresh || !fresh.id) return;
+          const old = byId.get(fresh.id);
+
+          if (!old || getTime(fresh) >= getTime(old)) {
+            byId.set(fresh.id, old ? { ...old, ...fresh } : fresh);
+          }
+        });
+
+        const merged = Array.from(byId.values()).sort(
+          (a, b) =>
+            Number(b.timestamp || b.createdAt || 0) -
+            Number(a.timestamp || a.createdAt || 0)
+        );
+
+        if (JSON.stringify(merged) !== JSON.stringify(current)) {
+          ordersRef.current = merged;
+          onUpdateOrdersRef.current(merged);
+        }
+      } catch (err) {
+        console.warn('Admin order refresh failed:', err);
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    void refreshOrders();
+    const timer = window.setInterval(() => {
+      void refreshOrders();
+    }, 5000);
+
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, []);
+
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -49,7 +119,7 @@ export const AdminOrders: React.FC<AdminOrdersProps> = ({
   };
 
   const handleUpdateStatus = async (orderId: string, newStatus: OrderStatus) => {
-    const now = Date.now() + 10000; // Add timestamp buffer for instant UI priority
+    const now = Date.now(); // Keep timestamps consistent with server updates
     // 1. Immediately update UI state
     const updated = orders.map((o) => (o.id === orderId ? { ...o, status: newStatus, updatedAt: now } : o));
     onUpdateOrders(updated);

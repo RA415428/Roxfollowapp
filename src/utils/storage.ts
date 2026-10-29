@@ -216,58 +216,89 @@ export function saveOrders(orders: Order[]): void {
  */
 export async function updateOrderStatus(orderId: string, newStatus: OrderStatus, reason?: string): Promise<boolean> {
   if (!orderId) return false;
-  const now = Date.now();
 
+  const now = Date.now();
+  const currentOrders = loadOrders();
+  const existing = currentOrders.find((o) => o.id === orderId);
+
+  const updatedOrder = {
+    ...(existing || { id: orderId }),
+    status: newStatus,
+    updatedAt: now,
+    ...(reason ? { statusReason: reason } : {})
+  };
+
+  const updatedLocal = [
+    updatedOrder,
+    ...currentOrders.filter((o) => o.id !== orderId)
+  ];
+
+  // Update the local UI immediately.
   try {
-    // 1. Update in LocalStorage immediately
-    const currentOrders = loadOrders();
-    const updatedLocal = currentOrders.map((o) => {
-      if (o.id === orderId) {
-        return {
-          ...o,
-          status: newStatus,
-          updatedAt: now,
-          statusReason: reason || o.statusReason
-        };
-      }
-      return o;
-    });
     localStorage.setItem(ORDERS_KEY, JSON.stringify(updatedLocal));
     window.dispatchEvent(new Event('instaboost_orders_updated'));
+  } catch (err) {
+    console.warn('Could not update local order cache:', err);
+  }
 
-    // 2. Update directly in Firestore document
-    const orderDocRef = doc(db, 'orders', orderId);
-    setDoc(orderDocRef, {
+  // Persist to both destinations and inspect actual outcomes.
+  const firestorePromise = setDoc(
+    doc(db, 'orders', orderId),
+    updatedOrder,
+    { merge: true }
+  );
+
+  const serverPromise = (async () => {
+    const payload = {
       status: newStatus,
       updatedAt: now,
-      ...(reason ? { statusReason: reason } : {})
-    }, { merge: true }).catch((err) => {
-      console.warn('Firestore updateOrderStatus warning:', err);
-    });
+      ...(reason ? { reason } : {})
+    };
 
-    // 3. Update in Express backend via PATCH /api/orders/:orderId/status
-    fetch(getApiUrl(`/api/orders/${encodeURIComponent(orderId)}/status`), {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        status: newStatus,
-        updatedAt: now,
-        reason
-      })
-    }).catch(() => {
-      // Fallback post full orders if patch endpoint unavailable
-      fetch(getApiUrl('/api/orders'), {
-        method: 'POST',
+    let response = await fetch(
+      getApiUrl(`/api/orders/${encodeURIComponent(orderId)}/status`),
+      {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedLocal)
-      }).catch(() => {});
-    });
+        body: JSON.stringify(payload)
+      }
+    );
 
-    return true;
-  } catch (err) {
-    console.error('Error in updateOrderStatus:', err);
-    return false;
+    // Try the POST compatibility route if PATCH is rejected.
+    if (!response.ok) {
+      response = await fetch(
+        getApiUrl(`/api/orders/${encodeURIComponent(orderId)}/status`),
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        }
+      );
+    }
+
+    if (!response.ok) {
+      throw new Error(`Order status API returned HTTP ${response.status}`);
+    }
+
+    return response.json().catch(() => null);
+  })();
+
+  const results = await Promise.allSettled([
+    firestorePromise,
+    serverPromise
+  ]);
+
+  const firestoreSaved = results[0].status === 'fulfilled';
+  const serverSaved = results[1].status === 'fulfilled';
+
+  if (!firestoreSaved) {
+    console.warn('Firestore order status update failed:', results[0]);
   }
+  if (!serverSaved) {
+    console.warn('Server order status update failed:', results[1]);
+  }
+
+  return firestoreSaved || serverSaved;
 }
 
 export async function deleteOrderPermanently(orderId: string): Promise<void> {
