@@ -1306,12 +1306,32 @@ export async function signInWithGoogle(customWelcomeBonus?: number): Promise<Goo
     });
     return {
       success: false,
-      error: 'Google login returned no Firebase ID token. Check Google OAuth configuration.'
+      error: 'Please don\'t close email choose box. Choose your email and continue.'
     };
   } catch (err: any) {
-    if (err?.message && err.message.toLowerCase().includes('cancel')) {
-      return { success: false, error: 'Google Sign-In was cancelled.' };
+    const errorMsg = err?.message || '';
+    const errorLower = errorMsg.toLowerCase();
+
+    // Detect Google Account Picker cancellation (user closed popup without choosing email)
+    if (
+      errorLower.includes('cancel') ||
+      errorLower.includes('popup_closed') ||
+      errorLower.includes('popup closed') ||
+      errorLower.includes('user cancelled') ||
+      errorLower.includes('popup_closed_by_user') ||
+      errorLower.includes('dismissed') ||
+      errorLower.includes('not_allowed') ||
+      errorLower.includes('403') ||
+      errorLower.includes('disallowed_useragent') ||
+      errorMsg === '' ||
+      errorMsg === 'Google Sign-In was cancelled.'
+    ) {
+      return {
+        success: false,
+        error: 'Please don\'t close email choose box. Choose your email and continue.'
+      };
     }
+
     console.error('Google sign-in error:', err);
     return { success: false, error: err?.message || 'Google sign-in failed.' };
   }

@@ -47,6 +47,44 @@ export async function updateUserOnFirestore(
 }
 
 /**
+ * Transaction Deduplication Map
+ * Prevents duplicate coin mutations from slow network retries.
+ */
+const pendingCoinMutations = new Map<string, Promise<any>>();
+const completedCoinMutations = new Set<string>();
+
+export function getCoinMutationKey(memberId: string, type: string, amount: number): string {
+  return `${memberId}_${type}_${amount}_${Date.now().toString().slice(-8)}`;
+}
+
+export async function safeCoinMutation(
+  memberId: string,
+  type: string,
+  amount: number,
+  mutationFn: () => Promise<any>
+): Promise<any> {
+  const key = getCoinMutationKey(memberId, type, amount);
+
+  // If same mutation is already in-flight, return the existing promise
+  if (pendingCoinMutations.has(key)) {
+    return pendingCoinMutations.get(key);
+  }
+
+  const promise = mutationFn();
+  pendingCoinMutations.set(key, promise);
+
+  try {
+    const result = await promise;
+    completedCoinMutations.add(key);
+    return result;
+  } finally {
+    pendingCoinMutations.delete(key);
+    // Clean up completed mutations after 5 minutes
+    setTimeout(() => completedCoinMutations.delete(key), 300000);
+  }
+}
+
+/**
  * Resolves the backend server API URL dynamically.
  * Works seamlessly in both web browsers and native APK/WebView apps on any mobile device.
  */
@@ -214,7 +252,7 @@ export function saveOrders(orders: Order[]): void {
  * Updates a single order's status atomically in Firestore, Express Backend, and LocalStorage.
  * Prevents race condition where older snapshots or sync loops revert 'COMPLETED' orders.
  */
-export async function updateOrderStatus(orderId: string, newStatus: OrderStatus, reason?: string): Promise<boolean> {
+export async function updateOrderStatus(orderId: string, newStatus: OrderStatus, reason?: string, adminStatusLocked = false): Promise<boolean> {
   if (!orderId) return false;
 
   const now = Date.now();
@@ -225,7 +263,8 @@ export async function updateOrderStatus(orderId: string, newStatus: OrderStatus,
     ...(existing || { id: orderId }),
     status: newStatus,
     updatedAt: now,
-    ...(reason ? { statusReason: reason } : {})
+    ...(reason ? { statusReason: reason } : {}),
+    ...(adminStatusLocked ? { adminStatusLocked: true } : {})
   };
 
   const updatedLocal = [
@@ -252,7 +291,8 @@ export async function updateOrderStatus(orderId: string, newStatus: OrderStatus,
     const payload = {
       status: newStatus,
       updatedAt: now,
-      ...(reason ? { reason } : {})
+      ...(reason ? { reason } : {}),
+      ...(adminStatusLocked ? { adminStatusLocked: true } : {})
     };
 
     let response = await fetch(

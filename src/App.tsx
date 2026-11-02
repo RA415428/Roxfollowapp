@@ -750,6 +750,7 @@ export function App() {
     let cancelled = false;
     let retryTimer: number | undefined;
     let probing = false;
+    let retryCount = 0;
 
     const probeInternet = async () => {
       if (cancelled || probing) return;
@@ -788,17 +789,27 @@ export function App() {
       setIsOnline(connected);
 
       if (connected) {
+        retryCount = 0;
         setCurrentScreen(previous =>
           previous === 'LOADING'
             ? (isGoogleAuthActive(loadUserWallet()) ? 'MAIN_APP' : 'LOGIN')
             : previous
         );
       } else {
-        setCurrentScreen('LOADING');
-        retryTimer = window.setTimeout(() => {
-          probing = false;
-          void probeInternet();
-        }, 2500);
+        // After 3 failed retries, proceed with cached data instead of blocking forever
+        if (retryCount >= 3) {
+          const wallet = loadUserWallet();
+          const hasCachedData = Boolean(wallet.memberId && wallet.memberId !== '100001');
+          setCurrentScreen(hasCachedData ? 'MAIN_APP' : 'LOGIN');
+          retryCount = 0;
+        } else {
+          retryCount++;
+          setCurrentScreen('LOADING');
+          retryTimer = window.setTimeout(() => {
+            probing = false;
+            void probeInternet();
+          }, 2500);
+        }
       }
       probing = false;
     };
@@ -807,12 +818,12 @@ export function App() {
       if (retryTimer) window.clearTimeout(retryTimer);
       retryTimer = undefined;
       probing = false;
+      retryCount = 0;
       void probeInternet();
     };
 
     const handleOffline = () => {
       setIsOnline(false);
-      setCurrentScreen('LOADING');
       if (retryTimer) window.clearTimeout(retryTimer);
       retryTimer = window.setTimeout(() => {
         probing = false;
@@ -1096,23 +1107,58 @@ export function App() {
   }, [adminConfig.ads?.autoAdIntervalMinutes]);
 
   // Sync SMM panel order status into the app.
-  // This only checks orders that already have an SMM Order ID.
+  // Checks orders that have an SMM Order ID, and also reconciles orders
+  // forwarded to SMM but still missing smmOrderId on the client.
   useEffect(() => {
     if (currentScreen !== 'MAIN_APP') return;
 
     let stopped = false;
 
     const syncSmmStatuses = async () => {
-      if (stopped || !navigator.onLine) return;
+      if (stopped) return;
 
+      // Only sync when online; if offline, keep last known status and retry later.
+      const isOnline = navigator.onLine;
+
+      // Build list of orders eligible for status sync
       const activeOrders = orders.filter(
         (order) =>
           order.smmOrderId &&
+          !(order as any).adminStatusLocked &&
           order.status !== 'COMPLETED' &&
           order.status !== 'CANCELLED'
       );
 
-      if (!activeOrders.length) return;
+      // Also reconcile orders that were forwarded but client lacks smmOrderId
+      // Fetch from server to fill in missing smmOrderId values.
+      if (isOnline && orders.some((o) => o.smmAutoForwardAttempted && !o.smmOrderId)) {
+        try {
+          const serverRes = await fetch(getApiUrl('/api/orders'), {
+            method: 'GET',
+            headers: { 'Content-Type': 'application/json' }
+          });
+          if (serverRes.ok) {
+            const serverData = await serverRes.json();
+            const serverOrders = Array.isArray(serverData?.orders) ? serverData.orders : [];
+            const serverById = new Map<string, any>();
+            serverOrders.forEach((o: any) => { if (o?.id) serverById.set(String(o.id), o); });
+
+            const reconciled = orders.map((o) => {
+              if (o.smmAutoForwardAttempted && !o.smmOrderId && serverById.has(String(o.id))) {
+                const serverOrder = serverById.get(String(o.id));
+                return { ...o, smmOrderId: serverOrder.smmOrderId || o.smmOrderId, status: serverOrder.status || o.status };
+              }
+              return o;
+            });
+            setOrders(reconciled);
+            saveOrders(reconciled);
+          }
+        } catch {
+          // Ignore; will retry on next sync cycle
+        }
+      }
+
+      if (!isOnline || !activeOrders.length) return;
 
       for (const order of activeOrders) {
         if (stopped) return;
@@ -1144,9 +1190,12 @@ export function App() {
         ) {
           nextStatus = 'COMPLETED';
         } else if (
-          raw.includes('progress') ||
-          raw.includes('processing') ||
           raw.includes('partial')
+        ) {
+          nextStatus = 'IN_PROGRESS';
+        } else if (
+          raw.includes('progress') ||
+          raw.includes('processing')
         ) {
           nextStatus = 'IN_PROGRESS';
         } else if (
@@ -1217,12 +1266,18 @@ export function App() {
       }
     };
 
+    const handleOnline = () => {
+      syncSmmStatuses();
+    };
+
     document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('online', handleOnline);
 
     return () => {
       stopped = true;
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('online', handleOnline);
     };
   }, [currentScreen, orders, adminConfig.smmApi]);
 
