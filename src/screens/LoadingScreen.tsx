@@ -1,106 +1,49 @@
-import React, { useEffect, useState } from 'react';
-import { APP_LOGO_SRC } from '../assets/appLogoBase64';
-import { fetchServerAdminConfig } from '../utils/storage';
-import { getApiUrl } from '../utils/storage';
+import React, { useEffect } from 'react';
+import { getCachedUser } from '../utils/storage';
 
 interface LoadingScreenProps {
-  isOnline?: boolean;
-  retryCount?: number;
+  onComplete: (isOffline: boolean) => void;
 }
 
-export const LoadingScreen: React.FC<LoadingScreenProps> = ({
-  isOnline = true,
-  retryCount = 0,
-}) => {
-  const [showRetry, setShowRetry] = useState(false);
-
+export const LoadingScreen: React.FC<LoadingScreenProps> = ({ onComplete }) => {
   useEffect(() => {
-    let timer: NodeJS.Timeout;
+    let isSubscribed = true;
 
-    const attemptConnect = async () => {
-      if (retryCount >= 3) {
-        setShowRetry(true);
-        return;
-      }
+    const checkAppInitialization = async () => {
+      const isOnline = navigator.onLine;
+      const cachedUser = getCachedUser();
 
-      try {
-        const res = await fetch(getApiUrl('/api/config'), {
-          method: 'GET',
-          cache: 'no-store',
-          signal: AbortSignal.timeout(5000)
-        });
-
-        if (res.ok) {
-          await fetchServerAdminConfig();
-          // Connection established - proceed to main app
-          timer = setTimeout(() => {
-            // Signal parent to proceed
-          }, 100);
-        } else {
-          retryCount += 1;
-          attemptConnect();
+      if (!isOnline) {
+        if (cachedUser) {
+          if (isSubscribed) onComplete(true);
+          return;
         }
-      } catch {
-        retryCount += 1;
-        attemptConnect();
       }
+
+      const timeoutId = setTimeout(() => {
+        if (isSubscribed) {
+          if (cachedUser) {
+            onComplete(true);
+          } else {
+            onComplete(false);
+          }
+        }
+      }, 4000);
+
+      return () => clearTimeout(timeoutId);
     };
 
-    attemptConnect();
+    checkAppInitialization();
 
-    return () => clearTimeout(timer);
-  }, [isOnline, retryCount]);
+    return () => {
+      isSubscribed = false;
+    };
+  }, [onComplete]);
 
   return (
-    <main className="min-h-screen w-full bg-[#0f0412] flex flex-col items-center justify-center text-center p-6">
-      <div className="relative flex items-center justify-center w-24 h-24 mb-7">
-        <div
-          aria-hidden="true"
-          className="absolute inset-0 rounded-full border-[3px] border-pink-400/20 border-t-pink-400 border-r-purple-500 animate-spin"
-        />
-        <div className="w-16 h-16 rounded-2xl overflow-hidden bg-slate-900 border border-slate-700 shadow-lg shadow-pink-500/20">
-          <img
-            src={APP_LOGO_SRC}
-            alt="ROX FOLLOW"
-            className="w-full h-full object-cover"
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).src = '/app_logo.png';
-            }}
-          />
-        </div>
-      </div>
-
-      {showRetry && (
-        <div className="bg-slate-900/95 border border-purple-500/30 rounded-2xl p-4 mb-6 text-center">
-          <p className="text-sm text-purple-300 mb-2">
-            Connection timed out. Opening app with cached data...
-          </p>
-          <button
-            onClick={() => window.location.reload()}
-            className="px-4 py-2 bg-purple-600 text-white rounded text-sm font-bold"
-          >
-            Retry Connection
-          </button>
-        </div>
-      )}
-
-      {!isOnline && !showRetry && (
-        <p
-          role="status"
-          className="text-sm font-semibold text-amber-400 max-w-xs"
-        >
-          No internet connection. App will proceed with cached data.
-        </p>
-      )}
-
-      {!isOnline && showRetry && (
-        <p
-          role="status"
-          className="text-sm font-semibold text-red-500 max-w-xs"
-        >
-          Please check your internet connection
-        </p>
-      )}
-    </main>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white">
+      <div className="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+      <p className="text-sm text-gray-400 font-medium">Loading Rox Follow...</p>
+    </div>
   );
 };

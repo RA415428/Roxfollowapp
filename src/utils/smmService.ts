@@ -1,306 +1,45 @@
-import { Order, SmmApiSettings } from '../types';
-import { getApiUrl } from './storage';
-import { CapacitorHttp } from '@capacitor/core';
-import { isNativeApp } from './nativeAds';
+export type OrderStatus =
+  | 'PENDING'
+  | 'PROCESSING'
+  | 'IN_PROGRESS'
+  | 'COMPLETED'
+  | 'PARTIAL'
+  | 'CANCELLED'
+  | 'FAILED';
 
-async function smmFormPost(url: string, formData: URLSearchParams): Promise<any> {
-  if (isNativeApp()) {
-    const response = await CapacitorHttp.request({
-      url,
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      data: formData.toString()
-    });
-    return response.data;
-  }
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: formData.toString()
-  });
-  return res.json();
-}
-
-export interface SmmApiResponse {
-  success: boolean;
-  orderId?: string;
-  error?: string;
-  rawResponse?: string;
-}
-
-export async function submitOrderToSmmApi(
-  order: Order,
-  smmSettings: SmmApiSettings
-): Promise<SmmApiResponse> {
-  if (!smmSettings.enabled) {
-    return {
-      success: false,
-      error: 'SMM API forwarding is disabled in Admin Panel.'
-    };
-  }
-
-  // 1. Send order to backend server proxy first (bypasses browser CORS completely)
-  try {
-    const proxyEndpoint = getApiUrl('/api/smm/proxy-order');
-    const res = await fetch(proxyEndpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ order, smmSettings })
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.success) {
-        return {
-          success: true,
-          orderId: data.orderId,
-          rawResponse: data.rawResponse
-        };
-      } else if (data && data.error) {
-        return {
-          success: false,
-          error: data.error,
-          rawResponse: data.rawResponse
-        };
-      }
-    }
-  } catch (err) {
-    console.warn('Backend SMM proxy route unreachable, attempting direct client fallback:', err);
-  }
-
-  // 2. Fallback direct client attempt (for standalone offline or demo URLs)
-  const isDemoUrl = smmSettings.apiUrl.includes('demo-smm-panel') || smmSettings.apiUrl === '';
+export function normalizeSmmStatus(rawStatus: string): OrderStatus {
+  if (!rawStatus) return 'PENDING';
   
-  if (isDemoUrl) {
-    const generatedSmmId = `SMM-${Math.floor(100000 + Math.random() * 900000)}`;
-    const simResponse = {
-      order: generatedSmmId,
-      service: order.serviceId || '101',
-      link: order.targetUrl,
-      quantity: order.quantity,
-      status: 'Pending',
-      charge: '0.045',
-      currency: 'USD',
-      timestamp: new Date().toISOString()
-    };
+  const statusStr = rawStatus.toLowerCase().trim();
 
-    return {
-      success: true,
-      orderId: generatedSmmId,
-      rawResponse: JSON.stringify(simResponse, null, 2)
-    };
+  if (statusStr.includes('pending')) return 'PENDING';
+  if (statusStr.includes('processing')) return 'PROCESSING';
+  if (statusStr.includes('in progress') || statusStr.includes('inprogress') || statusStr.includes('in_progress')) {
+    return 'IN_PROGRESS';
   }
-
-  let serviceId = order.serviceId || '';
-  let apiKey = smmSettings.globalApiKey;
-
-  const typeLower = (order.serviceType || '').toLowerCase();
-  if (typeLower.includes('follower')) {
-    serviceId = serviceId || smmSettings.services.followers.serviceId;
-    if (smmSettings.services.followers.apiKey) apiKey = smmSettings.services.followers.apiKey;
-  } else if (typeLower.includes('like')) {
-    serviceId = serviceId || smmSettings.services.likes.serviceId;
-    if (smmSettings.services.likes.apiKey) apiKey = smmSettings.services.likes.apiKey;
-  } else if (typeLower.includes('view') || typeLower.includes('reel')) {
-    serviceId = serviceId || smmSettings.services.views.serviceId;
-    if (smmSettings.services.views.apiKey) apiKey = smmSettings.services.views.apiKey;
-  } else if (typeLower.includes('comment')) {
-    serviceId = serviceId || smmSettings.services.comments.serviceId;
-    if (smmSettings.services.comments.apiKey) apiKey = smmSettings.services.comments.apiKey;
-  } else if (typeLower.includes('share')) {
-    serviceId = serviceId || smmSettings.services.shares.serviceId;
-    if (smmSettings.services.shares.apiKey) apiKey = smmSettings.services.shares.apiKey;
-  } else if (typeLower.includes('repost')) {
-    serviceId = serviceId || smmSettings.services.reposts?.serviceId || '';
-    if (smmSettings.services.reposts?.apiKey) apiKey = smmSettings.services.reposts.apiKey;
-  } else if (typeLower.includes('save')) {
-    serviceId = serviceId || smmSettings.services.saves?.serviceId || '';
-    if (smmSettings.services.saves?.apiKey) apiKey = smmSettings.services.saves.apiKey;
-  } else if (typeLower.includes('reach') || typeLower.includes('impression') || typeLower.includes('visit')) {
-    serviceId = serviceId || smmSettings.services.reach?.serviceId || '';
-    if (smmSettings.services.reach?.apiKey) apiKey = smmSettings.services.reach.apiKey;
+  if (statusStr.includes('completed') || statusStr.includes('success') || statusStr.includes('done')) {
+    return 'COMPLETED';
   }
+  if (statusStr.includes('partial')) return 'PARTIAL';
+  if (statusStr.includes('cancelled') || statusStr.includes('canceled')) return 'CANCELLED';
+  if (statusStr.includes('failed') || statusStr.includes('error')) return 'FAILED';
 
-  if (!serviceId) {
-    serviceId = smmSettings.services.followers.serviceId || '101';
-  }
-
-  if (!apiKey) {
-    return {
-      success: false,
-      error: 'Missing API Key for SMM Panel.'
-    };
-  }
-
-  try {
-    const formData = new URLSearchParams();
-    formData.append('key', apiKey);
-    formData.append('action', 'add');
-    formData.append('service', serviceId);
-    formData.append('link', order.targetUrl);
-    formData.append('quantity', order.quantity.toString());
-
-    const data = await smmFormPost(smmSettings.apiUrl, formData);
-    if (data && (data.order !== undefined || data.order_id !== undefined)) {
-      return {
-        success: true,
-        orderId: String(data.order || data.order_id),
-        rawResponse: JSON.stringify(data, null, 2)
-      };
-    } else if (data && data.error) {
-      return {
-        success: false,
-        error: String(data.error),
-        rawResponse: JSON.stringify(data, null, 2)
-      };
-    }
-  } catch (err: any) {
-    return {
-      success: false,
-      error: `Could not connect to SMM Panel API (${err.message || 'CORS / Network Error'}). Ensure API URL & Key are correct.`
-    };
-  }
-
-  return {
-    success: false,
-    error: 'Failed to place order on SMM Panel.'
-  };
+  return 'PROCESSING';
 }
 
-
-export interface SmmOrderStatusResponse {
-  success: boolean;
-  status?: string;
-  startCount?: string;
-  remains?: string;
-  charge?: string;
-  currency?: string;
-  error?: string;
-  rawResponse?: string;
-}
-
-export async function fetchSmmOrderStatus(
-  orderId: string,
-  smmSettings: SmmApiSettings,
-  serviceType?: string
-): Promise<SmmOrderStatusResponse> {
-  if (!orderId) {
-    return { success: false, error: "SMM Order ID is required." };
-  }
-
-  if (!smmSettings?.enabled) {
-    return { success: false, error: "SMM API forwarding is disabled." };
-  }
-
+export async function fetchOrderStatus(apiUrl: string, apiKey: string, smmOrderId: string) {
   try {
-    const response = await fetch(getApiUrl("/api/smm/proxy-status"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        orderId: String(orderId),
-        serviceType: serviceType || "",
-        smmSettings
-      })
-    });
-
+    const response = await fetch(`${apiUrl}?key=${apiKey}&action=status&order=${smmOrderId}`);
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    
     const data = await response.json();
-
-    if (!response.ok || !data?.success) {
-      return {
-        success: false,
-        error: data?.error || "Unable to fetch SMM order status.",
-        rawResponse: data?.rawResponse
-      };
-    }
-
     return {
-      success: true,
-      status: data.status,
-      startCount: data.startCount,
-      remains: data.remains,
-      charge: data.charge,
-      currency: data.currency,
-      rawResponse: data.rawResponse
+      status: normalizeSmmStatus(data.status || ''),
+      remains: data.remains ?? null,
+      charge: data.charge ?? null,
     };
-  } catch (err: any) {
-    return {
-      success: false,
-      error: err?.message || "SMM status network error."
-    };
+  } catch (error) {
+    console.error('Failed to fetch status from SMM provider:', error);
+    return null;
   }
 }
-
-export async function testSmmApiConnection(apiUrl: string, apiKey: string): Promise<{ success: boolean; message: string; balance?: string }> {
-  if (!apiUrl || !apiUrl.trim()) {
-    return { success: false, message: 'API URL is required.' };
-  }
-
-  const isDemo = apiUrl.includes('demo-smm-panel');
-  if (isDemo) {
-    return {
-      success: true,
-      message: 'Demo SMM Panel API connected successfully! System ready for order processing.',
-      balance: '$50.00 USD (Demo Balance)'
-    };
-  }
-
-  // 1. Try server proxy balance test (bypasses browser CORS completely)
-  try {
-    const proxyEndpoint = getApiUrl('/api/smm/proxy-balance');
-    const res = await fetch(proxyEndpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ apiUrl, apiKey })
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      if (data && data.success) {
-        return {
-          success: true,
-          message: 'Connected to SMM Panel API successfully via Server Proxy!',
-          balance: data.balance || 'Connected'
-        };
-      } else if (data && data.error) {
-        return {
-          success: false,
-          message: `SMM Panel API Error: ${data.error}`
-        };
-      }
-    }
-  } catch (err) {
-    console.warn('Backend balance proxy test failed, trying direct:', err);
-  }
-
-  // 2. Direct fetch fallback
-  try {
-    const formData = new URLSearchParams();
-    formData.append('key', apiKey || 'test');
-    formData.append('action', 'balance');
-
-    const data = await smmFormPost(apiUrl, formData);
-    if (data && data.balance !== undefined) {
-      return {
-        success: true,
-        message: `Connection successful! Account balance: ${data.balance} ${data.currency || 'USD'}`,
-        balance: `${data.balance} ${data.currency || 'USD'}`
-      };
-    } else if (data && data.error) {
-      return {
-        success: false,
-        message: `SMM Panel Error: ${data.error}`
-      };
-    }
-  } catch (err: any) {
-    return {
-      success: false,
-      message: `Connection failed: ${err.message || 'CORS / Network error'}. Check API URL and API Key.`
-    };
-  }
-
-  return {
-    success: false,
-    message: 'Could not connect to SMM API server.'
-  };
-}
-
