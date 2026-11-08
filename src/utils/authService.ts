@@ -1306,14 +1306,17 @@ export async function signInWithGoogle(customWelcomeBonus?: number): Promise<Goo
     });
     return {
       success: false,
-      error: 'Please don\'t close email choose box. Choose your email and continue.'
+      error: 'Please don\'t close email choose popup choose email and continue'
     };
   } catch (err: any) {
-    const errorMsg = err?.message || '';
-    const errorLower = errorMsg.toLowerCase();
+    const errorMsg = String(err?.message || '');
+    const errorCode = String(err?.code ?? err?.errorCode ?? err?.cause?.code ?? '');
+    const errorLower = `${errorMsg} ${errorCode} ${String(err || '')}`.toLowerCase();
 
-    // Detect Google Account Picker cancellation (user closed popup without choosing email)
+    // Detect native Google chooser cancellation, including native error 1205.
     if (
+      errorCode === '1205' ||
+      errorLower.includes('1205') ||
       errorLower.includes('cancel') ||
       errorLower.includes('popup_closed') ||
       errorLower.includes('popup closed') ||
@@ -1328,7 +1331,7 @@ export async function signInWithGoogle(customWelcomeBonus?: number): Promise<Goo
     ) {
       return {
         success: false,
-        error: 'Please don\'t close email choose box. Choose your email and continue.'
+        error: 'Please don\'t close email choose popup choose email and continue'
       };
     }
 

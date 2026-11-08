@@ -310,13 +310,17 @@ export function App() {
               changed = true;
             }
             // Adopt remote coins if changed in Firestore Console or Admin Panel
+            const remoteCoinsUpdatedAt = Number(currentUserInList.updatedAt) || 0;
+            const localCoinsUpdatedAt = Number(updated.lastLocalCoinMutationAt) || 0;
+
             if (
               typeof currentUserInList.coins === 'number' &&
-              !isNaN(currentUserInList.coins) &&
-              updated.coins !== currentUserInList.coins && (Date.now() - (updated.lastLocalCoinMutationAt || 0)) > 20000
+              Number.isFinite(currentUserInList.coins) &&
+              remoteCoinsUpdatedAt > localCoinsUpdatedAt &&
+              updated.coins !== currentUserInList.coins
             ) {
               updated.coins = currentUserInList.coins;
-              updated.lastLocalCoinMutationAt = Date.now();
+              updated.lastLocalCoinMutationAt = remoteCoinsUpdatedAt;
               changed = true;
             }
             if (changed) {
@@ -347,14 +351,18 @@ export function App() {
             hasChange = true;
           }
           // Adopt remote coins if changed in Firestore Console or Admin Panel
+          const remoteWalletUpdatedAt = Number(updatedAt) || 0;
+          const localWalletUpdatedAt = Number(updated.lastLocalCoinMutationAt) || 0;
+
           if (
             newCoins !== undefined &&
             typeof newCoins === 'number' &&
-            !isNaN(newCoins) &&
+            Number.isFinite(newCoins) &&
+            remoteWalletUpdatedAt > localWalletUpdatedAt &&
             updated.coins !== newCoins
           ) {
             updated.coins = newCoins;
-            updated.lastLocalCoinMutationAt = Date.now();
+            updated.lastLocalCoinMutationAt = remoteWalletUpdatedAt;
             hasChange = true;
           }
           if (newAdsWatched !== undefined && newAdsWatched > updated.dailyAdsWatched) {
@@ -745,30 +753,27 @@ export function App() {
     };
   }, [wallet.coins, wallet.dailyAdsWatched, adminConfig.ads]);
 
-  // Monitor real internet reachability independently from screen changes.
+  // Strict internet gate: never leave splash until the app backend responds.
   useEffect(() => {
     let cancelled = false;
     let retryTimer: number | undefined;
     let probing = false;
-    let retryCount = 0;
 
     const probeInternet = async () => {
       if (cancelled || probing) return;
       probing = true;
-      const startedAt = Date.now();
       let connected = false;
 
       if (navigator.onLine) {
         const controller = new AbortController();
-        const timeout = window.setTimeout(() => controller.abort(), 1800);
+        const timeout = window.setTimeout(() => controller.abort(), 7000);
         try {
-          await fetch('https://www.gstatic.com/generate_204', {
+          const response = await fetch(getApiUrl('/api/config'), {
             method: 'GET',
             cache: 'no-store',
-            mode: 'no-cors',
             signal: controller.signal
           });
-          connected = true;
+          connected = response.ok;
         } catch {
           connected = false;
         } finally {
@@ -776,41 +781,30 @@ export function App() {
         }
       }
 
-      const remaining = Math.max(0, 2000 - (Date.now() - startedAt));
-      if (remaining) {
-        await new Promise(resolve => window.setTimeout(resolve, remaining));
-      }
       if (cancelled) {
         probing = false;
         return;
       }
 
-      setStartupInternetChecked(true);
       setIsOnline(connected);
+      setStartupInternetChecked(true);
 
       if (connected) {
-        retryCount = 0;
+        if (retryTimer) window.clearTimeout(retryTimer);
+        retryTimer = undefined;
         setCurrentScreen(previous =>
           previous === 'LOADING'
             ? (isGoogleAuthActive(loadUserWallet()) ? 'MAIN_APP' : 'LOGIN')
             : previous
         );
       } else {
-        // After 3 failed retries, proceed with cached data instead of blocking forever
-        if (retryCount >= 3) {
-          const wallet = loadUserWallet();
-          const hasCachedData = Boolean(wallet.memberId && wallet.memberId !== '100001');
-          setCurrentScreen(hasCachedData ? 'MAIN_APP' : 'LOGIN');
-          retryCount = 0;
-        } else {
-          retryCount++;
-          setCurrentScreen('LOADING');
-          retryTimer = window.setTimeout(() => {
-            probing = false;
-            void probeInternet();
-          }, 2500);
-        }
+        setCurrentScreen('LOADING');
+        retryTimer = window.setTimeout(() => {
+          probing = false;
+          void probeInternet();
+        }, 8000);
       }
+
       probing = false;
     };
 
@@ -818,12 +812,15 @@ export function App() {
       if (retryTimer) window.clearTimeout(retryTimer);
       retryTimer = undefined;
       probing = false;
-      retryCount = 0;
+      setCurrentScreen('LOADING');
+      setStartupInternetChecked(false);
       void probeInternet();
     };
 
     const handleOffline = () => {
       setIsOnline(false);
+      setStartupInternetChecked(false);
+      setCurrentScreen('LOADING');
       if (retryTimer) window.clearTimeout(retryTimer);
       retryTimer = window.setTimeout(() => {
         probing = false;
@@ -1110,7 +1107,7 @@ export function App() {
   // Checks orders that have an SMM Order ID, and also reconciles orders
   // forwarded to SMM but still missing smmOrderId on the client.
   useEffect(() => {
-    if (currentScreen !== 'MAIN_APP') return;
+    if (currentScreen !== 'MAIN_APP' && currentScreen !== 'ADMIN') return;
 
     let stopped = false;
 
@@ -1124,7 +1121,6 @@ export function App() {
       const activeOrders = orders.filter(
         (order) =>
           order.smmOrderId &&
-          !(order as any).adminStatusLocked &&
           order.status !== 'COMPLETED' &&
           order.status !== 'CANCELLED'
       );
@@ -1193,11 +1189,10 @@ export function App() {
           raw.includes('partial')
         ) {
           nextStatus = 'IN_PROGRESS';
-        } else if (
-          raw.includes('progress') ||
-          raw.includes('processing')
-        ) {
+        } else if (raw.includes('progress')) {
           nextStatus = 'IN_PROGRESS';
+        } else if (raw.includes('processing')) {
+          nextStatus = 'PROCESSING';
         } else if (
           raw.includes('pending') ||
           raw.includes('queue') ||
@@ -1208,6 +1203,14 @@ export function App() {
         }
 
         if (!nextStatus || nextStatus === order.status) continue;
+
+        // Protect newer local updates from older SMM polling responses.
+        const latestOrder = loadOrders().find(item => item.id === order.id);
+        if (!latestOrder) continue;
+        const latestStatus = String(latestOrder.status || '').toUpperCase();
+        if (['COMPLETED', 'CANCELLED', 'FAILED'].includes(latestStatus)) continue;
+        if ((latestOrder as any).adminStatusLocked === true) continue;
+        if (Number(latestOrder.updatedAt || 0) > Number(order.updatedAt || 0)) continue;
 
         const updatedAt = Date.now();
 
@@ -1281,9 +1284,9 @@ export function App() {
     };
   }, [currentScreen, orders, adminConfig.smmApi]);
 
-  // Keep users on the loading screen until internet connectivity is verified.
-  if (currentScreen === 'LOADING') {
-    return <LoadingScreen isOnline={isOnline} />;
+  // Never render Login/Admin/Main App until the backend connection is verified.
+  if (!startupInternetChecked || !isOnline || currentScreen === 'LOADING') {
+    return <LoadingScreen isOnline={startupInternetChecked && isOnline} />;
   }
 
   // Google Login Gate Screen - Required before entry into main app

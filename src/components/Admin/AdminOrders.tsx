@@ -121,12 +121,24 @@ export const AdminOrders: React.FC<AdminOrdersProps> = ({
   const handleUpdateStatus = async (orderId: string, newStatus: OrderStatus) => {
     const now = Date.now(); // Keep timestamps consistent with server updates
     // 1. Immediately update UI state
-    const updated = orders.map((o) => (o.id === orderId ? { ...o, status: newStatus, updatedAt: now } : o));
+    const updated = orders.map((o) => (o.id === orderId ? {
+      ...o,
+      status: newStatus,
+      updatedAt: now,
+      adminStatusLocked: true
+    } : o));
     onUpdateOrders(updated);
-    showToast(`Order #${orderId} marked as ${newStatus}`);
 
-    // 2. Persist to Firestore and Express Server
-    await updateOrderStatus(orderId, newStatus);
+    // Persist the manual completion lock with the status.
+    const saved = await updateOrderStatus(
+      orderId,
+      newStatus,
+      undefined,
+      true
+    );
+    showToast(saved
+      ? `Order #${orderId} marked as ${newStatus}`
+      : `Order #${orderId}: save failed. Please check connection.`);
   };
 
   const handleDeleteOrder = (orderId: string) => {
@@ -143,8 +155,8 @@ export const AdminOrders: React.FC<AdminOrdersProps> = ({
     }
     const now = Date.now();
     onRefundUser(order.coinsSpent);
-    updateOrderStatus(order.id, 'CANCELLED', 'Refunded by Admin');
-    const updated = orders.map((o) => (o.id === order.id ? { ...o, status: 'CANCELLED' as OrderStatus, updatedAt: now } : o));
+    updateOrderStatus(order.id, 'CANCELLED', 'Refunded by Admin', true);
+    const updated = orders.map((o) => (o.id === order.id ? { ...o, status: 'CANCELLED' as OrderStatus, updatedAt: now, adminStatusLocked: true } : o));
     onUpdateOrders(updated);
     showToast(`Refunded ${order.coinsSpent} coins to user and cancelled order #${order.id}`);
   };
