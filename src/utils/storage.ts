@@ -1295,11 +1295,6 @@ export function subscribeToFirestore(
         return timeB - timeA;
       });
       localStorage.setItem(ORDERS_KEY, JSON.stringify(ordersList));
-      fetch(getApiUrl('/api/orders'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(ordersList)
-      }).catch(() => {});
       window.dispatchEvent(new Event('instaboost_orders_updated'));
       onOrdersUpdate(ordersList);
     }
