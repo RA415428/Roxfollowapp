@@ -69,9 +69,12 @@ class GlobalErrorBoundary extends React.Component<
             ⚡
           </div>
           <h2 className="text-xl font-bold mb-2">Reloading Application</h2>
-          <p className="text-sm text-slate-400 max-w-xs mb-6">
+          <p className="text-sm text-slate-400 max-w-xs mb-3">
             Connecting to ROX FOLLOW server. Please tap below to refresh.
           </p>
+          <pre className="text-left text-xs text-red-300 bg-red-950/30 border border-red-500/30 rounded-lg p-3 max-w-full overflow-auto whitespace-pre-wrap break-words mb-6">
+            {this.state.error?.message || 'Unknown React error'}
+          </pre>
           <button
             onClick={() => window.location.reload()}
             className="px-6 py-3 bg-gradient-to-r from-pink-500 to-rose-600 rounded-xl font-bold shadow-lg shadow-pink-500/25 active:scale-95 transition-all"

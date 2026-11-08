@@ -185,7 +185,7 @@ export const AdminOrders: React.FC<AdminOrdersProps> = ({
   };
 
   const handleForwardAllToSmm = async () => {
-    const unForwarded = orders.filter((o) => !o.smmOrderId && o.status !== 'CANCELLED');
+    const unForwarded = orders.filter((o) => !!o && !o.smmOrderId && o.status !== 'CANCELLED');
     if (unForwarded.length === 0) {
       showToast('No pending unforwarded orders found.');
       return;
@@ -274,7 +274,7 @@ export const AdminOrders: React.FC<AdminOrdersProps> = ({
               Total: {orders.length}
             </span>
             <span className="px-2.5 py-1.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-xl text-xs font-bold">
-              Pending: {orders.filter((o) => o.status === 'PROCESSING' || o.status === 'IN_PROGRESS' || (o.status as string) === 'PENDING').length}
+              Pending: {orders.filter((o) => !!o && (o.status === 'PROCESSING' || o.status === 'IN_PROGRESS' || (o.status as string) === 'PENDING')).length}
             </span>
           </div>
         </div>
@@ -382,7 +382,7 @@ export const AdminOrders: React.FC<AdminOrdersProps> = ({
                     </td>
 
                     {/* Quantity */}
-                    <td className="p-3.5 font-bold text-white">{ord.quantity.toLocaleString()}</td>
+                    <td className="p-3.5 font-bold text-white">{Number(ord.quantity || 0).toLocaleString()}</td>
 
                     {/* Coins */}
                     <td className="p-3.5 font-bold text-amber-400">{ord.coinsSpent}</td>
