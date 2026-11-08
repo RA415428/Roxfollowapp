@@ -251,6 +251,9 @@ void loadAdminConfigFromFirestore().then((remoteConfig) => {
   console.warn('[CONFIG] Background Firestore config sync failed:', error?.message || error);
 });
 
+// Restore durable orders after every server restart.
+void loadOrdersFromFirestore();
+
 // Serve ads.txt for Google AdSense verification
 app.get('/ads.txt', (req, res) => {
   res.setHeader('Content-Type', 'text/plain');
@@ -824,6 +827,103 @@ async function loadAdminConfigFromFirestore(): Promise<any | null> {
 }
 
 
+
+
+/**
+ * Durable Orders storage.
+ * Firestore is the persistent source; local memory/disk is the fallback.
+ * Uses the same "orders" collection already written by the Android client.
+ */
+async function saveOrdersToFirestore(orders: any[] = globalOrders): Promise<boolean> {
+  try {
+    const firebaseApp = getFirebaseAdminApp();
+    if (!firebaseApp) return false;
+
+    const firestore = getAdminFirestore(firebaseApp);
+    const validOrders = Array.isArray(orders)
+      ? orders.filter((o: any) => o && o.id)
+      : [];
+
+    for (let i = 0; i < validOrders.length; i += 400) {
+      const batch = firestore.batch();
+      const chunk = validOrders.slice(i, i + 400);
+
+      for (const order of chunk) {
+        batch.set(
+          firestore.collection('orders').doc(String(order.id)),
+          order,
+          { merge: true }
+        );
+      }
+
+      await batch.commit();
+    }
+
+    console.log(`[ORDERS] Durable Firestore save successful: ${validOrders.length}`);
+    return true;
+  } catch (error: any) {
+    console.warn('[ORDERS] Firestore save failed:', error?.message || error);
+    return false;
+  }
+}
+
+async function loadOrdersFromFirestore(): Promise<void> {
+  try {
+    const firebaseApp = getFirebaseAdminApp();
+    if (!firebaseApp) return;
+
+    const firestore = getAdminFirestore(firebaseApp);
+    const snapshot = await firestore.collection('orders').get();
+
+    const orderMap = new Map<string, any>();
+
+    for (const order of globalOrders) {
+      if (order?.id) orderMap.set(String(order.id), order);
+    }
+
+    for (const document of snapshot.docs) {
+      const remoteOrder = document.data();
+      if (!remoteOrder) continue;
+
+      const id = String(remoteOrder.id || document.id);
+      if (!id) continue;
+
+      const existing = orderMap.get(id);
+
+      if (!existing) {
+        orderMap.set(id, { ...remoteOrder, id });
+        continue;
+      }
+
+      const existingTime = Number(
+        existing.updatedAt || existing.timestamp || existing.createdAt || 0
+      );
+      const remoteTime = Number(
+        remoteOrder.updatedAt || remoteOrder.timestamp || remoteOrder.createdAt || 0
+      );
+
+      orderMap.set(
+        id,
+        remoteTime >= existingTime
+          ? { ...existing, ...remoteOrder, id }
+          : { ...remoteOrder, ...existing, id }
+      );
+    }
+
+    globalOrders = Array.from(orderMap.values()).sort((a, b) =>
+      Number(b.updatedAt || b.timestamp || b.createdAt || 0) -
+      Number(a.updatedAt || a.timestamp || a.createdAt || 0)
+    );
+
+    savePersistedState();
+    await saveOrdersToFirestore(globalOrders);
+
+    console.log(`[ORDERS] Firestore startup recovery complete: ${globalOrders.length}`);
+  } catch (error: any) {
+    console.warn('[ORDERS] Firestore startup recovery failed:', error?.message || error);
+  }
+}
+
 app.get('/api/notifications/status', (req, res) => {
   const credentialsConfigured = Boolean(
     process.env.FIREBASE_SERVICE_ACCOUNT_JSON
@@ -1020,7 +1120,7 @@ app.get('/api/orders', (req, res) => {
 });
 
 // 3.1 Update Specific Order Status Endpoint
-app.patch('/api/orders/:orderId/status', (req, res) => {
+app.patch('/api/orders/:orderId/status', async (req, res) => {
   try {
     const { orderId } = req.params;
     const { status, updatedAt, reason } = req.body || {};
@@ -1038,6 +1138,7 @@ app.patch('/api/orders/:orderId/status', (req, res) => {
         ...(reason ? { statusReason: reason } : {})
       };
       savePersistedState();
+      await saveOrdersToFirestore();
       return res.json({ success: true, order: globalOrders[idx] });
     }
 
@@ -1050,13 +1151,14 @@ app.patch('/api/orders/:orderId/status', (req, res) => {
     };
     globalOrders.unshift(newRecord);
     savePersistedState();
+    await saveOrdersToFirestore();
     return res.json({ success: true, order: newRecord });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err.message });
   }
 });
 
-app.post('/api/orders/:orderId/status', (req, res) => {
+app.post('/api/orders/:orderId/status', async (req, res) => {
   const { orderId } = req.params;
   const { status, updatedAt, reason } = req.body || {};
   const now = updatedAt || Date.now();
@@ -1069,6 +1171,7 @@ app.post('/api/orders/:orderId/status', (req, res) => {
       ...(reason ? { statusReason: reason } : {})
     };
     savePersistedState();
+    await saveOrdersToFirestore();
     return res.json({ success: true, order: globalOrders[idx] });
   }
   return res.status(404).json({ success: false, error: 'Order not found' });
@@ -1234,6 +1337,7 @@ app.post('/api/orders', async (req, res) => {
     }
 
     savePersistedState();
+    await saveOrdersToFirestore();
     res.json({ success: true, orders: globalOrders });
   } catch (err) {
     res.status(500).json({ success: false, error: 'Failed to save order' });
