@@ -1196,10 +1196,30 @@ export function subscribeToFirestore(
   const unsubOrders = onSnapshot(collection(db, 'orders'), (querySnap) => {
     const ordersMap = new Map<string, Order>();
 
+    try {
+      const cached = localStorage.getItem(ORDERS_KEY);
+      const cachedOrders = cached ? JSON.parse(cached) : [];
+      if (Array.isArray(cachedOrders)) {
+        cachedOrders.forEach((o: Order) => {
+          if (o && o.id) ordersMap.set(String(o.id), o);
+        });
+      }
+    } catch (error) {
+      console.warn('Could not read cached orders:', error);
+    }
+
+    const getSnapshotOrderTime = (o: any): number =>
+      Number(o?.updatedAt || o?.timestamp || o?.createdAt || 0);
+
     querySnap.forEach((docSnap) => {
       const o = docSnap.data() as Order;
-      if (o && o.id) {
-        ordersMap.set(o.id, o);
+      if (!o || !o.id) return;
+      const id = String(o.id);
+      const cachedOrder = ordersMap.get(id);
+      if (!cachedOrder) {
+        ordersMap.set(id, o);
+      } else if (getSnapshotOrderTime(o) >= getSnapshotOrderTime(cachedOrder)) {
+        ordersMap.set(id, { ...cachedOrder, ...o });
       }
     });
 

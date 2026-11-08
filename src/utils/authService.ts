@@ -1317,6 +1317,8 @@ export async function signInWithGoogle(customWelcomeBonus?: number): Promise<Goo
     if (
       errorCode === '1205' ||
       errorLower.includes('1205') ||
+      errorCode === '12501' ||
+      errorLower.includes('12501') ||
       errorLower.includes('cancel') ||
       errorLower.includes('popup_closed') ||
       errorLower.includes('popup closed') ||

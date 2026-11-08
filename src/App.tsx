@@ -762,24 +762,8 @@ export function App() {
     const probeInternet = async () => {
       if (cancelled || probing) return;
       probing = true;
-      let connected = false;
-
-      if (navigator.onLine) {
-        const controller = new AbortController();
-        const timeout = window.setTimeout(() => controller.abort(), 7000);
-        try {
-          const response = await fetch(getApiUrl('/api/config'), {
-            method: 'GET',
-            cache: 'no-store',
-            signal: controller.signal
-          });
-          connected = response.ok;
-        } catch {
-          connected = false;
-        } finally {
-          window.clearTimeout(timeout);
-        }
-      }
+      // Device connectivity is separate from backend availability.
+      const connected = typeof navigator !== 'undefined' && navigator.onLine;
 
       if (cancelled) {
         probing = false;
