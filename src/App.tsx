@@ -151,8 +151,14 @@ export function App() {
     }
     return 'HOME';
   });
-  const [isOnline, setIsOnline] = useState<boolean>(navigator.onLine);
-  const [startupInternetChecked, setStartupInternetChecked] = useState(false);
+  const [isOnline, setIsOnline] = useState<boolean>(() => navigator.onLine);
+  const [startupInternetChecked, setStartupInternetChecked] = useState(() => {
+    // Initial check - probe internet immediately on mount
+    if (typeof navigator !== 'undefined' && navigator.onLine) {
+      setIsOnline(true);
+    }
+    return false; // Will be set to true after probe completes
+  });
 
   // Loaded Storage State
   const [adminConfig, setAdminConfig] = useState<AdminConfig>(loadAdminConfig);
@@ -1270,7 +1276,7 @@ export function App() {
 
   // Never render Login/Admin/Main App until the backend connection is verified.
   if (!startupInternetChecked || !isOnline || currentScreen === 'LOADING') {
-    return <LoadingScreen isOnline={startupInternetChecked && isOnline} />;
+    return <LoadingScreen isOnline={startupInternetChecked ? isOnline : undefined} />;
   }
 
   // Google Login Gate Screen - Required before entry into main app
