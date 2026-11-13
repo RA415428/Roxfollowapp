@@ -4,6 +4,7 @@ import { Order, OrderStatus, PaymentRequest, UserWallet, AdminConfig } from '../
 import { ServiceIcon } from '../components/ServiceIcon';
 
 import { formatCoins } from '../utils/format';
+import { getUserVisibleStatus } from '../utils/smmService';
 import { fetchPaymentRequests, subscribeToPaymentRequests, subscribeToUserOrders } from '../utils/storage';
 
 interface OrdersScreenProps {
@@ -92,6 +93,8 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
         updatedAt: rtOrd.updatedAt || existing.updatedAt,
         smmOrderId: rtOrd.smmOrderId || existing.smmOrderId,
         smmResponse: rtOrd.smmResponse || existing.smmResponse,
+        smmStatus: rtOrd.smmStatus || existing.smmStatus,
+        smmStatusUpdatedAt: rtOrd.smmStatusUpdatedAt || existing.smmStatusUpdatedAt,
         statusReason: rtOrd.statusReason || existing.statusReason,
         timestamp: rtOrd.timestamp || existing.timestamp,
         createdAt: rtOrd.createdAt || existing.createdAt,
@@ -103,7 +106,7 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
     const timeA = typeof a.createdAt === 'number' ? a.createdAt : (typeof a.timestamp === 'number' ? a.timestamp : 0);
     const timeB = typeof b.createdAt === 'number' ? b.createdAt : (typeof b.timestamp === 'number' ? b.timestamp : 0);
     return timeB - timeA;
-  });
+  }).map((o) => ({ ...o, status: getUserVisibleStatus(o, adminConfig?.smmApi) }));
 
   // Filtered Lists - use mergedOrders for real-time status
   const filteredOrders = mergedOrders.filter((ord) => {
@@ -148,6 +151,12 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
         return (
           <span className="bg-amber-500/15 border border-amber-500/30 text-amber-300 font-bold px-2 py-0.5 rounded text-[10px] flex items-center gap-1 animate-pulse">
             <Loader2 className="w-3 h-3 animate-spin" /> IN PROGRESS
+          </span>
+        );
+      case 'CANCELLED':
+        return (
+          <span className="bg-red-500/15 border border-red-500/30 text-red-400 font-bold px-2 py-0.5 rounded text-[10px] flex items-center gap-1">
+            <XCircle className="w-3 h-3" /> CANCELLED
           </span>
         );
       default:

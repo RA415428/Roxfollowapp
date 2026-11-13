@@ -27,7 +27,7 @@ import {
   updateOrderStatus
 } from './utils/storage';
 import { DEFAULT_ADMIN_CONFIG } from './utils/defaultAdminConfig';
-import { fetchSmmOrderStatus } from './utils/smmService';
+import { fetchSmmOrderStatus, isSmmPanelConnected, mapSmmStatus } from './utils/smmService';
 import { db } from './lib/firebase';
 import { doc, setDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
 
@@ -73,6 +73,21 @@ import {
   restoreUserByMemberId,
   getAppReturnIntentUrl
 } from './utils/authService';
+
+async function detectInternet(): Promise<boolean> {
+  if (typeof navigator !== 'undefined' && navigator.onLine) return true;
+  const probes = ['https://www.gstatic.com/generate_204', 'https://www.google.com/generate_204'];
+  for (const url of probes) {
+    try {
+      const ctrl = new AbortController();
+      const timer = window.setTimeout(() => ctrl.abort(), 4000);
+      await fetch(url + '?t=' + Date.now(), { mode: 'no-cors', cache: 'no-store', signal: ctrl.signal });
+      window.clearTimeout(timer);
+      return true;
+    } catch {}
+  }
+  return false;
+}
 
 export function App() {
   const [isAdminAllowed, setIsAdminAllowed] = useState<boolean>(() => {
@@ -769,7 +784,7 @@ export function App() {
       if (cancelled || probing) return;
       probing = true;
       // Device connectivity is separate from backend availability.
-      const connected = typeof navigator !== 'undefined' && navigator.onLine;
+      const connected = await detectInternet();
 
       if (cancelled) {
         probing = false;
@@ -792,7 +807,7 @@ export function App() {
         retryTimer = window.setTimeout(() => {
           probing = false;
           void probeInternet();
-        }, 8000);
+        }, 3000);
       }
 
       probing = false;
@@ -1093,186 +1108,57 @@ export function App() {
     return () => clearInterval(interval);
   }, [adminConfig.ads?.autoAdIntervalMinutes]);
 
-  // Sync SMM panel order status into the app.
-  // Checks orders that have an SMM Order ID, and also reconciles orders
-  // forwarded to SMM but still missing smmOrderId on the client.
+  // SMM status goes into separate `smmStatus` field; admin `status` is never overwritten.
+  const ordersRef = React.useRef<Order[]>(orders);
+  const smmApiRef = React.useRef(adminConfig.smmApi);
+  useEffect(() => { ordersRef.current = orders; }, [orders]);
+  useEffect(() => { smmApiRef.current = adminConfig.smmApi; }, [adminConfig.smmApi]);
+  const smmConnected = isSmmPanelConnected(adminConfig.smmApi);
+
   useEffect(() => {
     if (currentScreen !== 'MAIN_APP' && currentScreen !== 'ADMIN') return;
+    if (!smmConnected) return;
 
     let stopped = false;
+    let running = false;
 
     const syncSmmStatuses = async () => {
-      if (stopped) return;
-
-      // Only sync when online; if offline, keep last known status and retry later.
-      const isOnline = navigator.onLine;
-
-      // Build list of orders eligible for status sync
-      const activeOrders = orders.filter(
-        (order) =>
-          order.smmOrderId &&
-          order.status !== 'COMPLETED' &&
-          order.status !== 'CANCELLED'
-      );
-
-      // Also reconcile orders that were forwarded but client lacks smmOrderId
-      // Fetch from server to fill in missing smmOrderId values.
-      if (isOnline && orders.some((o) => o.smmAutoForwardAttempted && !o.smmOrderId)) {
-        try {
-          const serverRes = await fetch(getApiUrl('/api/orders'), {
-            method: 'GET',
-            headers: { 'Content-Type': 'application/json' }
-          });
-          if (serverRes.ok) {
-            const serverData = await serverRes.json();
-            const serverOrders = Array.isArray(serverData?.orders) ? serverData.orders : [];
-            const serverById = new Map<string, any>();
-            serverOrders.forEach((o: any) => { if (o?.id) serverById.set(String(o.id), o); });
-
-            const reconciled = orders.map((o) => {
-              if (o.smmAutoForwardAttempted && !o.smmOrderId && serverById.has(String(o.id))) {
-                const serverOrder = serverById.get(String(o.id));
-                return { ...o, smmOrderId: serverOrder.smmOrderId || o.smmOrderId, status: serverOrder.status || o.status };
-              }
-              return o;
-            });
-            setOrders(reconciled);
-            saveOrders(reconciled);
-          }
-        } catch {
-          // Ignore; will retry on next sync cycle
+      if (stopped || running || !navigator.onLine) return;
+      running = true;
+      try {
+        const smmApi = smmApiRef.current;
+        const targets = ordersRef.current.filter(
+          (o) => o.smmOrderId && !['COMPLETED', 'CANCELLED'].includes(mapSmmStatus(o.smmStatus) || '')
+        );
+        for (const order of targets) {
+          if (stopped) return;
+          const result = await fetchSmmOrderStatus(String(order.smmOrderId), smmApi, order.serviceType);
+          if (!result.success || !result.status) continue;
+          const rawStatus = String(result.status);
+          if (rawStatus === order.smmStatus) continue;
+          const patch = { smmStatus: rawStatus, smmStatusUpdatedAt: Date.now() };
+          setOrders((current) => current.map((o) => (o.id === order.id ? { ...o, ...patch } : o)));
+          saveOrders(loadOrders().map((o) => (o.id === order.id ? { ...o, ...patch } : o)));
+          try { await setDoc(doc(db, 'orders', order.id), patch, { merge: true }); } catch {}
         }
-      }
-
-      if (!isOnline || !activeOrders.length) return;
-
-      for (const order of activeOrders) {
-        if (stopped) return;
-
-        const result = await fetchSmmOrderStatus(
-          String(order.smmOrderId),
-          adminConfig.smmApi,
-          order.serviceType
-        );
-
-        if (!result.success || !result.status) continue;
-
-        const raw = String(result.status).trim().toLowerCase();
-        let nextStatus: 'PROCESSING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED' | null = null;
-
-        if (
-          raw.includes('cancel') ||
-          raw.includes('canceled') ||
-          raw.includes('failed') ||
-          raw.includes('reject') ||
-          raw.includes('refunded')
-        ) {
-          nextStatus = 'CANCELLED';
-        } else if (
-          raw.includes('complete') ||
-          raw.includes('completed') ||
-          raw.includes('done') ||
-          raw.includes('finished')
-        ) {
-          nextStatus = 'COMPLETED';
-        } else if (
-          raw.includes('partial')
-        ) {
-          nextStatus = 'IN_PROGRESS';
-        } else if (raw.includes('progress')) {
-          nextStatus = 'IN_PROGRESS';
-        } else if (raw.includes('processing')) {
-          nextStatus = 'PROCESSING';
-        } else if (
-          raw.includes('pending') ||
-          raw.includes('queue') ||
-          raw.includes('waiting') ||
-          raw.includes("new")
-        ) {
-          nextStatus = 'PROCESSING';
-        }
-
-        if (!nextStatus || nextStatus === order.status) continue;
-
-        // Protect newer local updates from older SMM polling responses.
-        const latestOrder = loadOrders().find(item => item.id === order.id);
-        if (!latestOrder) continue;
-        const latestStatus = String(latestOrder.status || '').toUpperCase();
-        if (['COMPLETED', 'CANCELLED', 'FAILED'].includes(latestStatus)) continue;
-        if ((latestOrder as any).adminStatusLocked === true) continue;
-        if (Number(latestOrder.updatedAt || 0) > Number(order.updatedAt || 0)) continue;
-
-        const updatedAt = Date.now();
-
-        setOrders((current) =>
-          current.map((item) =>
-            item.id === order.id
-              ? {
-                  ...item,
-                  status: nextStatus!,
-                  updatedAt,
-                  statusReason: `SMM Panel status: ${result.status}`
-                }
-              : item
-          )
-        );
-
-        const localOrders = loadOrders().map((item) =>
-          item.id === order.id
-            ? {
-                ...item,
-                status: nextStatus!,
-                updatedAt,
-                statusReason: `SMM Panel status: ${result.status}`
-              }
-            : item
-        );
-        saveOrders(localOrders);
-
-        await updateOrderStatus(
-          order.id,
-          nextStatus,
-          `SMM Panel status: ${result.status}`
-        );
-
-        try {
-          await setDoc(
-            doc(db, 'orders', order.id),
-            {
-              status: nextStatus,
-              updatedAt,
-              statusReason: `SMM Panel status: ${result.status}`
-            },
-            { merge: true }
-          );
-        } catch {}
+      } finally {
+        running = false;
       }
     };
 
-    syncSmmStatuses();
-
-    const timer = window.setInterval(syncSmmStatuses, 60000);
-
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') {
-        syncSmmStatuses();
-      }
-    };
-
-    const handleOnline = () => {
-      syncSmmStatuses();
-    };
-
+    void syncSmmStatuses();
+    const timer = window.setInterval(syncSmmStatuses, 30000);
+    const onVisible = () => { if (document.visibilityState === 'visible') void syncSmmStatuses(); };
+    const onOnline = () => { void syncSmmStatuses(); };
     document.addEventListener('visibilitychange', onVisible);
-    window.addEventListener('online', handleOnline);
-
+    window.addEventListener('online', onOnline);
     return () => {
       stopped = true;
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisible);
-      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('online', onOnline);
     };
-  }, [currentScreen, orders, adminConfig.smmApi]);
+  }, [currentScreen, smmConnected]);
 
   // Never render Login/Admin/Main App until the backend connection is verified.
   if (!startupInternetChecked || !isOnline || currentScreen === 'LOADING') {

@@ -7,7 +7,7 @@ interface LoadingScreenProps {
 }
 
 export const LoadingScreen: React.FC<LoadingScreenProps> = ({
-  isOnline = false,
+  isOnline,
 }) => {
   return (
     <main className="min-h-screen w-full bg-[#0f0412] flex flex-col items-center justify-center text-center p-6">
@@ -28,7 +28,7 @@ export const LoadingScreen: React.FC<LoadingScreenProps> = ({
         </div>
       </div>
 
-      {!isOnline && (
+      {isOnline === false && (
         <p
           role="status"
           className="text-sm font-semibold text-red-500 max-w-xs"

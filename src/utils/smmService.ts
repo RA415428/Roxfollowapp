@@ -304,3 +304,27 @@ export async function testSmmApiConnection(apiUrl: string, apiKey: string): Prom
   };
 }
 
+
+
+export function isSmmPanelConnected(smm?: SmmApiSettings | null): boolean {
+  if (!smm || !smm.enabled || !String(smm.apiUrl || '').trim()) return false;
+  const keys = [smm.globalApiKey, ...Object.values(smm.services || {}).map((s: any) => s?.apiKey)];
+  return keys.some((k) => typeof k === 'string' && k.trim().length > 0);
+}
+
+export function mapSmmStatus(raw?: string | null): Order['status'] | null {
+  const s = String(raw || '').trim().toLowerCase();
+  if (!s) return null;
+  if (/(cancel|fail|reject|refund)/.test(s)) return 'CANCELLED';
+  if (/(complete|done|finish)/.test(s)) return 'COMPLETED';
+  if (/(partial|progress)/.test(s)) return 'IN_PROGRESS';
+  if (/(pending|queue|waiting|new|processing)/.test(s)) return 'PROCESSING';
+  return null;
+}
+
+export function getUserVisibleStatus(order: Order, smm?: SmmApiSettings | null): Order['status'] {
+  if (isSmmPanelConnected(smm) && order.smmOrderId) {
+    return mapSmmStatus(order.smmStatus) || 'PROCESSING';
+  }
+  return order.status;
+}

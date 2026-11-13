@@ -137,6 +137,8 @@ export interface Order {
   smmOrderId?: string;
   smmResponse?: string;
   smmAutoForwardAttempted?: boolean;
+  smmStatus?: string;
+  smmStatusUpdatedAt?: number;
 }
 
 export interface HashtagCategory {
