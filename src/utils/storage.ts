@@ -139,7 +139,7 @@ export function sanitizeAdminConfig(cfg: AdminConfig): AdminConfig {
         ? updated.ads.maxDailyAdsPerUser
         : persistedRates.maxDailyAdsPerUser || 10
     };
-    if (!updated.ads.directSmartlinkUrl || updated.ads.directSmartlinkUrl.includes('omg10') || updated.ads.directSmartlinkUrl.includes('monetag')) {
+    if (!updated.ads.directSmartlinkUrl) {
       updated.ads.directSmartlinkUrl = persistedRates.directSmartlinkUrl || 'https://doubtfulimpatient.com/bhetpw4me?key=b10856b9df41e998764e3e76a118f915';
     }
   } else {
@@ -150,6 +150,11 @@ export function sanitizeAdminConfig(cfg: AdminConfig): AdminConfig {
     };
   }
   return updated;
+}
+
+function configTime(c?: any): number {
+  const v = Number(c?.lastUpdated);
+  return Number.isFinite(v) ? v : 0;
 }
 
 export function loadAdminConfig(): AdminConfig {
@@ -390,6 +395,7 @@ export async function fetchServerAdminConfig(): Promise<AdminConfig | null> {
     if (docSnap.exists()) {
       const firestoreConfig = sanitizeAdminConfig(docSnap.data() as AdminConfig);
       if (firestoreConfig) {
+        if (configTime(firestoreConfig) < configTime(localConfig)) return localConfig;
         const merged: AdminConfig = {
           ...DEFAULT_ADMIN_CONFIG,
           ...firestoreConfig,
@@ -431,6 +437,7 @@ export async function fetchServerAdminConfig(): Promise<AdminConfig | null> {
       if (data && data.success && data.config) {
         const serverConfig: AdminConfig = sanitizeAdminConfig(data.config);
         if (serverConfig) {
+          if (configTime(serverConfig) < configTime(localConfig)) return localConfig;
           const merged: AdminConfig = {
             ...localConfig,
             ...serverConfig,
@@ -1172,7 +1179,7 @@ export function subscribeToFirestore(
   const unsubConfig = onSnapshot(doc(db, 'config', 'global'), (docSnap) => {
     if (docSnap.exists()) {
       const data = sanitizeAdminConfig(docSnap.data() as AdminConfig);
-      if (data) {
+      if (data && configTime(data) >= configTime(loadAdminConfig())) {
         localStorage.setItem(ADMIN_CONFIG_KEY, JSON.stringify(data));
         if (data.ads) {
           savePersistedRates({

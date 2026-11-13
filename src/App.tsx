@@ -27,7 +27,7 @@ import {
   updateOrderStatus
 } from './utils/storage';
 import { DEFAULT_ADMIN_CONFIG } from './utils/defaultAdminConfig';
-import { fetchSmmOrderStatus, isSmmPanelConnected, mapSmmStatus } from './utils/smmService';
+import { fetchSmmOrderStatus, isSmmPanelConnected, mapSmmStatus, getUserVisibleStatus } from './utils/smmService';
 import { db } from './lib/firebase';
 import { doc, setDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
 
@@ -1090,7 +1090,10 @@ export function App() {
   };
 
   const userOrders = orders.filter((o) => o.userMemberId === wallet.memberId);
-  const pendingOrdersCount = userOrders.filter((o) => o.status === 'IN_PROGRESS' || o.status === 'PROCESSING').length;
+  const pendingOrdersCount = userOrders.filter((o) => {
+    const visible = getUserVisibleStatus(o, adminConfig.smmApi);
+    return visible === 'IN_PROGRESS' || visible === 'PROCESSING';
+  }).length;
 
   // Screen Conditionals
   const isGoogleAuthenticated = isGoogleAuthActive(wallet);

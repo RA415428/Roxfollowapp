@@ -1,6 +1,7 @@
 package com.roxfollow.app;
 
 import android.util.Log;
+import android.graphics.Rect;
 import android.app.Activity;
 import android.os.Handler;
 import android.os.Looper;
@@ -27,6 +28,55 @@ public class UnityAdsPlugin extends Plugin {
     private BannerView unityBannerAd;
     private View unityBannerView;
     private boolean bannerErrorToastShown = false;
+
+    private int bannerTopMarginPx = 0;
+    private int bannerBaseScrollY = 0;
+    private boolean scrollListenerInstalled = false;
+
+    private void installScrollListener() {
+        if (scrollListenerInstalled || bridge == null || bridge.getWebView() == null) return;
+        bridge.getWebView().setOnScrollChangeListener(
+            (v, scrollX, scrollY, oldScrollX, oldScrollY) -> applyBannerScroll()
+        );
+        scrollListenerInstalled = true;
+    }
+
+    private void resetBannerAnchor(int topMarginDp) {
+        bannerTopMarginPx = dp(topMarginDp);
+        bannerBaseScrollY = (bridge != null && bridge.getWebView() != null)
+            ? bridge.getWebView().getScrollY() : 0;
+        installScrollListener();
+        applyBannerScroll();
+    }
+
+    private void applyBannerScroll() {
+        final View banner = unityBannerView;
+        if (banner == null || bridge == null || bridge.getWebView() == null) return;
+
+        int scrollY = bridge.getWebView().getScrollY();
+        float translation = bannerBaseScrollY - scrollY;
+        banner.setTranslationY(translation);
+
+        int top = bannerTopMarginPx + Math.round(translation);
+        int h = banner.getHeight() > 0 ? banner.getHeight() : dp(50);
+        int w = banner.getWidth() > 0 ? banner.getWidth() : dp(320);
+        int headerPx = dp(62);
+        int parentH = banner.getParent() instanceof View
+            ? ((View) banner.getParent()).getHeight() : 0;
+        int bottomLimit = parentH > 0 ? parentH - dp(72) : Integer.MAX_VALUE;
+
+        int clipTop = Math.max(0, headerPx - top);
+        int clipBottom = Math.min(h, bottomLimit - top);
+
+        if (clipBottom <= clipTop) {
+            banner.setVisibility(View.INVISIBLE);
+        } else {
+            banner.setVisibility(View.VISIBLE);
+            banner.setClipBounds(
+                (clipTop > 0 || clipBottom < h) ? new Rect(0, clipTop, w, clipBottom) : null
+            );
+        }
+    }
 
     // Show only the first banner failure per app session.
     private void reportBannerError(String message) {
@@ -110,6 +160,7 @@ public class UnityAdsPlugin extends Plugin {
                             unityBannerView.setLayoutParams(bannerParams);
                         }
                     }
+                    resetBannerAnchor(topMarginDp);
                     JSObject ret = new JSObject();
                     ret.put("shown", true);
                     call.resolve(ret);
@@ -178,6 +229,7 @@ public class UnityAdsPlugin extends Plugin {
                             content.requestLayout();
                             content.invalidate();
                             unityBannerView = loadedBanner;
+                            resetBannerAnchor(topMarginDp);
 
                             JSObject ret = new JSObject();
                             ret.put("shown", true);
