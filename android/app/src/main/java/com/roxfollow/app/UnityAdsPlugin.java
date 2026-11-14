@@ -29,35 +29,23 @@ public class UnityAdsPlugin extends Plugin {
     private View unityBannerView;
     private boolean bannerErrorToastShown = false;
 
-    private int bannerTopMarginPx = 0;
-    private int bannerBaseScrollY = 0;
-    private boolean scrollListenerInstalled = false;
-
-    private void installScrollListener() {
-        if (scrollListenerInstalled || bridge == null || bridge.getWebView() == null) return;
-        bridge.getWebView().setOnScrollChangeListener(
-            (v, scrollX, scrollY, oldScrollX, oldScrollY) -> applyBannerScroll()
-        );
-        scrollListenerInstalled = true;
-    }
+    private int bannerTopMarginPx = 0; // margin the banner was laid out with
+    private int bannerTopPx = 0;       // where the page anchor currently is
 
     private void resetBannerAnchor(int topMarginDp) {
         bannerTopMarginPx = dp(topMarginDp);
-        bannerBaseScrollY = (bridge != null && bridge.getWebView() != null)
-            ? bridge.getWebView().getScrollY() : 0;
-        installScrollListener();
-        applyBannerScroll();
+        bannerTopPx = bannerTopMarginPx;
+        applyBannerPosition();
     }
 
-    private void applyBannerScroll() {
+    // Moves the banner to the anchor position and clips it under the top bar / above the bottom nav.
+    private void applyBannerPosition() {
         final View banner = unityBannerView;
-        if (banner == null || bridge == null || bridge.getWebView() == null) return;
+        if (banner == null) return;
 
-        int scrollY = bridge.getWebView().getScrollY();
-        float translation = bannerBaseScrollY - scrollY;
-        banner.setTranslationY(translation);
+        banner.setTranslationY(bannerTopPx - bannerTopMarginPx);
 
-        int top = bannerTopMarginPx + Math.round(translation);
+        int top = bannerTopPx;
         int h = banner.getHeight() > 0 ? banner.getHeight() : dp(50);
         int w = banner.getWidth() > 0 ? banner.getWidth() : dp(320);
         int headerPx = dp(62);
@@ -76,6 +64,17 @@ public class UnityAdsPlugin extends Plugin {
                 (clipTop > 0 || clipBottom < h) ? new Rect(0, clipTop, w, clipBottom) : null
             );
         }
+    }
+
+    @PluginMethod
+    public void moveBanner(PluginCall call) {
+        Float topDp = call.getFloat("topDp");
+        Activity activity = getActivity();
+        if (topDp != null && activity != null) {
+            bannerTopPx = dp(topDp);
+            activity.runOnUiThread(this::applyBannerPosition);
+        }
+        call.resolve();
     }
 
     // Show only the first banner failure per app session.

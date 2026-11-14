@@ -324,7 +324,9 @@ export function mapSmmStatus(raw?: string | null): Order['status'] | null {
 
 export function getUserVisibleStatus(order: Order, smm?: SmmApiSettings | null): Order['status'] {
   if (isSmmPanelConnected(smm) && order.smmOrderId) {
-    return mapSmmStatus(order.smmStatus) || 'PROCESSING';
+    const fromSmm = mapSmmStatus(order.smmStatus);
+    if (fromSmm) return fromSmm;
   }
+  // No SMM-reported status (order not on the panel / not polled yet) -> admin panel status.
   return order.status;
 }

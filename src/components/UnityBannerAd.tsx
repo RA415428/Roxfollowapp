@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { isNativeApp, showNativeUnityBanner, hideNativeUnityBanner } from '../utils/nativeAds';
+import { isNativeApp, showNativeUnityBanner, hideNativeUnityBanner, moveNativeUnityBanner } from '../utils/nativeAds';
 
 export function UnityBannerAd() {
   const bannerAnchorRef = useRef<HTMLDivElement>(null);
@@ -13,6 +13,8 @@ export function UnityBannerAd() {
     let requesting = false;
     let bannerLoaded = false;
     let lastMargin = -99999;
+    let rafId = 0;
+    let lastSentTop = -99999;
 
     const syncBanner = async () => {
       if (cancelled || requesting) return;
@@ -41,6 +43,19 @@ export function UnityBannerAd() {
 
     const onScroll = () => {
       if (cancelled) return;
+      // Follow the page every frame: send the anchor's live position to the native banner.
+      if (!rafId) {
+        rafId = requestAnimationFrame(() => {
+          rafId = 0;
+          const anchor = bannerAnchorRef.current;
+          if (cancelled || !anchor || !bannerLoaded) return;
+          const top = Math.round(anchor.getBoundingClientRect().top * 10) / 10;
+          if (top !== lastSentTop) {
+            lastSentTop = top;
+            moveNativeUnityBanner(top);
+          }
+        });
+      }
       if (scrollTimer) clearTimeout(scrollTimer);
       scrollTimer = setTimeout(() => { void syncBanner(); }, 180);
     };
@@ -58,6 +73,7 @@ export function UnityBannerAd() {
 
     return () => {
       cancelled = true;
+      if (rafId) cancelAnimationFrame(rafId);
       document.removeEventListener('scroll', onScroll, true);
       if (retryTimer) clearTimeout(retryTimer);
       if (scrollTimer) clearTimeout(scrollTimer);
