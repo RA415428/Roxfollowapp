@@ -260,9 +260,9 @@ export function saveOrders(orders: Order[]): void {
 export async function updateOrderStatus(orderId: string, newStatus: OrderStatus, reason?: string, adminStatusLocked = false): Promise<boolean> {
   if (!orderId) return false;
 
-  const now = Date.now();
   const currentOrders = loadOrders();
   const existing = currentOrders.find((o) => o.id === orderId);
+  const now = Math.max(Date.now(), Number(existing?.updatedAt || 0) + 1);
 
   const updatedOrder = {
     ...(existing || { id: orderId }),

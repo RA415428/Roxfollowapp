@@ -308,8 +308,9 @@ export async function testSmmApiConnection(apiUrl: string, apiKey: string): Prom
 
 export function isSmmPanelConnected(smm?: SmmApiSettings | null): boolean {
   if (!smm || !smm.enabled || !String(smm.apiUrl || '').trim()) return false;
+  if (/demo-smm-panel/i.test(String(smm.apiUrl))) return false; // default demo panel = not connected
   const keys = [smm.globalApiKey, ...Object.values(smm.services || {}).map((s: any) => s?.apiKey)];
-  return keys.some((k) => typeof k === 'string' && k.trim().length > 0);
+  return keys.some((k) => typeof k === 'string' && k.trim().length > 0 && !/^demo_/i.test(k.trim()));
 }
 
 export function mapSmmStatus(raw?: string | null): Order['status'] | null {

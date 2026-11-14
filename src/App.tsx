@@ -1131,7 +1131,9 @@ export function App() {
       try {
         const smmApi = smmApiRef.current;
         const targets = ordersRef.current.filter(
-          (o) => o.smmOrderId && !['COMPLETED', 'CANCELLED'].includes(mapSmmStatus(o.smmStatus) || '')
+          (o) => o.smmOrderId
+            && !['COMPLETED', 'CANCELLED'].includes(mapSmmStatus(o.smmStatus) || '')
+            && (currentScreen === 'ADMIN' || String(o.userMemberId) === String(wallet.memberId))
         );
         for (const order of targets) {
           if (stopped) return;
@@ -1161,7 +1163,7 @@ export function App() {
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('online', onOnline);
     };
-  }, [currentScreen, smmConnected]);
+  }, [currentScreen, smmConnected, wallet.memberId]);
 
   // Never render Login/Admin/Main App until the backend connection is verified.
   if (!startupInternetChecked || !isOnline || currentScreen === 'LOADING') {

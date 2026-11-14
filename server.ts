@@ -848,13 +848,22 @@ async function saveOrdersToFirestore(orders: any[] = globalOrders): Promise<bool
       const batch = firestore.batch();
       const chunk = validOrders.slice(i, i + 400);
 
-      for (const order of chunk) {
-        batch.set(
-          firestore.collection('orders').doc(String(order.id)),
-          order,
-          { merge: true }
-        );
-      }
+      const refs = chunk.map((order: any) => firestore.collection('orders').doc(String(order.id)));
+      const snaps = await firestore.getAll(...refs);
+      chunk.forEach((order: any, k: number) => {
+        const snap = snaps[k];
+        if (snap && snap.exists) {
+          const remote: any = snap.data() || {};
+          const remoteTime = Number(remote.updatedAt || remote.timestamp || remote.createdAt || 0);
+          const localTime = Number(order.updatedAt || order.timestamp || order.createdAt || 0);
+          if (remoteTime > localTime) {
+            // Firestore already has a NEWER version (e.g. admin just completed it): keep it.
+            Object.assign(order, remote);
+            return;
+          }
+        }
+        batch.set(refs[k], order, { merge: true });
+      });
 
       await batch.commit();
     }
@@ -1128,7 +1137,8 @@ app.patch('/api/orders/:orderId/status', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Order ID and status are required' });
     }
 
-    const now = updatedAt || Date.now();
+    const prevTime = Number((globalOrders.find(o => o && o.id === orderId) || ({} as any)).updatedAt || 0);
+    const now = Math.max(Number(updatedAt) || 0, Date.now(), prevTime + 1);
     const idx = globalOrders.findIndex(o => o && o.id === orderId);
     if (idx !== -1) {
       globalOrders[idx] = {
@@ -1138,7 +1148,7 @@ app.patch('/api/orders/:orderId/status', async (req, res) => {
         ...(reason ? { statusReason: reason } : {})
       };
       savePersistedState();
-      await saveOrdersToFirestore();
+      await saveOrdersToFirestore([globalOrders[idx]]);
       return res.json({ success: true, order: globalOrders[idx] });
     }
 
@@ -1151,7 +1161,7 @@ app.patch('/api/orders/:orderId/status', async (req, res) => {
     };
     globalOrders.unshift(newRecord);
     savePersistedState();
-    await saveOrdersToFirestore();
+    await saveOrdersToFirestore([newRecord]);
     return res.json({ success: true, order: newRecord });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err.message });
@@ -1161,7 +1171,8 @@ app.patch('/api/orders/:orderId/status', async (req, res) => {
 app.post('/api/orders/:orderId/status', async (req, res) => {
   const { orderId } = req.params;
   const { status, updatedAt, reason } = req.body || {};
-  const now = updatedAt || Date.now();
+  const prevTime = Number((globalOrders.find(o => o && o.id === orderId) || ({} as any)).updatedAt || 0);
+  const now = Math.max(Number(updatedAt) || 0, Date.now(), prevTime + 1);
   const idx = globalOrders.findIndex(o => o && o.id === orderId);
   if (idx !== -1) {
     globalOrders[idx] = {
@@ -1171,7 +1182,7 @@ app.post('/api/orders/:orderId/status', async (req, res) => {
       ...(reason ? { statusReason: reason } : {})
     };
     savePersistedState();
-    await saveOrdersToFirestore();
+    await saveOrdersToFirestore([globalOrders[idx]]);
     return res.json({ success: true, order: globalOrders[idx] });
   }
   return res.status(404).json({ success: false, error: 'Order not found' });

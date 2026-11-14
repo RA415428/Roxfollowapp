@@ -18,6 +18,7 @@ import {
 import { AdminConfig, Order, OrderStatus } from '../../types';
 import { submitOrderToSmmApi } from '../../utils/smmService';
 import { fetchServerOrders, deleteOrderPermanently, updateOrderStatus } from '../../utils/storage';
+import { getUserVisibleStatus } from '../../utils/smmService';
 import { db } from '../../lib/firebase';
 import { collection, onSnapshot } from 'firebase/firestore';
 
@@ -34,6 +35,7 @@ export const AdminOrders: React.FC<AdminOrdersProps> = ({
   onUpdateOrders,
   onRefundUser
 }) => {
+  const vs = (o: Order) => getUserVisibleStatus(o, config.smmApi);
   const [filterStatus, setFilterStatus] = useState<string>('ALL');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [selectedLog, setSelectedLog] = useState<Order | null>(null);
@@ -221,8 +223,8 @@ export const AdminOrders: React.FC<AdminOrdersProps> = ({
     const matchesStatus =
       filterStatus === 'ALL' ||
       (filterStatus === 'PENDING'
-        ? ord.status === 'PROCESSING' || ord.status === 'IN_PROGRESS' || (ord.status as string) === 'PENDING'
-        : ord.status === filterStatus);
+        ? vs(ord) === 'PROCESSING' || vs(ord) === 'IN_PROGRESS' || (vs(ord) as string) === 'PENDING'
+        : vs(ord) === filterStatus);
     const ordId = String(ord.id || '');
     const ordMemberId = String(ord.userMemberId || '');
     const ordTarget = String(ord.targetUrl || '');
@@ -274,7 +276,7 @@ export const AdminOrders: React.FC<AdminOrdersProps> = ({
               Total: {orders.length}
             </span>
             <span className="px-2.5 py-1.5 bg-amber-500/10 text-amber-400 border border-amber-500/20 rounded-xl text-xs font-bold">
-              Pending: {orders.filter((o) => !!o && (o.status === 'PROCESSING' || o.status === 'IN_PROGRESS' || (o.status as string) === 'PENDING')).length}
+              Pending: {orders.filter((o) => !!o && ['PROCESSING', 'IN_PROGRESS', 'PENDING'].includes(vs(o) as string)).length}
             </span>
           </div>
         </div>
@@ -391,23 +393,23 @@ export const AdminOrders: React.FC<AdminOrdersProps> = ({
                     <td className="p-3.5">
                       <span
                         className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
-                          ord.status === 'COMPLETED'
+                          vs(ord) === 'COMPLETED'
                             ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                            : ord.status === 'IN_PROGRESS'
+                            : vs(ord) === 'IN_PROGRESS'
                             ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
-                            : ord.status === 'CANCELLED'
+                            : vs(ord) === 'CANCELLED'
                             ? 'bg-red-500/10 text-red-400 border border-red-500/20'
                             : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
                         }`}
                       >
-                        {ord.status}
+                        {vs(ord)}
                       </span>
                     </td>
 
                     {/* Actions */}
                     <td className="p-3.5">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        {ord.status !== 'COMPLETED' && (
+                        {vs(ord) !== 'COMPLETED' && (
                           <button
                             onClick={() => handleUpdateStatus(ord.id, 'COMPLETED')}
                             className="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[10px] rounded transition-colors"
@@ -427,7 +429,7 @@ export const AdminOrders: React.FC<AdminOrdersProps> = ({
                           {forwardingId === ord.id ? 'Sending...' : 'SMM API'}
                         </button>
 
-                        {ord.status !== 'CANCELLED' && (
+                        {vs(ord) !== 'CANCELLED' && (
                           <button
                             onClick={() => handleRefund(ord)}
                             className="px-2 py-1 bg-slate-800 hover:bg-red-900/50 text-red-300 font-bold text-[10px] rounded transition-colors flex items-center gap-1"

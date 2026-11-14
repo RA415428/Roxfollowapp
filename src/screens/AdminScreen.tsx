@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { getUserVisibleStatus } from '../utils/smmService';
 import { 
   Shield, 
   Zap, 
@@ -84,7 +85,10 @@ export const AdminScreen: React.FC<AdminScreenProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  const isPendingOrder = (o: Order) => o.status === 'PROCESSING' || o.status === 'IN_PROGRESS' || (o.status as string) === 'PENDING';
+  const isPendingOrder = (o: Order) => {
+    const s = getUserVisibleStatus(o, config.smmApi) as string;
+    return s === 'PROCESSING' || s === 'IN_PROGRESS' || s === 'PENDING';
+  };
   const pendingOrdersCount = orders.filter(isPendingOrder).length;
 
   const onlineCount = users.filter(isUserOnline).length;
