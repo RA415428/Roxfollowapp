@@ -1119,6 +1119,56 @@ export function App() {
   const smmConnected = isSmmPanelConnected(adminConfig.smmApi);
 
   useEffect(() => {
+    if (currentScreen !== 'MAIN_APP') return;
+    let stopped = false;
+
+    const pullMyOrders = async () => {
+      if (stopped || document.hidden || !navigator.onLine) return;
+      try {
+        const res = await fetch(getApiUrl('/api/orders'));
+        if (!res.ok) return;
+        const data = await res.json();
+        const mine: Order[] = (Array.isArray(data?.orders) ? data.orders : []).filter(
+          (o: Order) => o && o.id && String(o.userMemberId) === String(wallet.memberId)
+        );
+        if (stopped || mine.length === 0) return;
+
+        setOrders((current) => {
+          const map = new Map<string, Order>(current.map((o) => [o.id, o]));
+          let changed = false;
+          for (const s of mine) {
+            const l = map.get(s.id);
+            if (!l) {
+              map.set(s.id, s);
+              changed = true;
+              continue;
+            }
+            const sTime = Number(s.updatedAt || 0);
+            const lTime = Number(l.updatedAt || 0);
+            if (sTime > lTime || (sTime === lTime && s.status !== l.status)) {
+              map.set(s.id, { ...l, ...s });
+              changed = true;
+            }
+          }
+          return changed ? Array.from(map.values()) : current;
+        });
+      } catch {
+        // ignore: the next tick will retry
+      }
+    };
+
+    void pullMyOrders();
+    const timer = window.setInterval(pullMyOrders, 15000);
+    const onVisible = () => { if (document.visibilityState === 'visible') void pullMyOrders(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [currentScreen, wallet.memberId]);
+
+  useEffect(() => {
     if (currentScreen !== 'MAIN_APP' && currentScreen !== 'ADMIN') return;
     if (!smmConnected) return;
 
