@@ -38,6 +38,19 @@ import {
   WALLET_KEY 
 } from './storage';
 
+// Retries a Firestore read. ok=false means "could not find out" (slow network / error),
+// which must never be treated as "this account does not exist".
+async function reliableLookup<T>(fn: () => Promise<T>): Promise<{ ok: boolean; value: T | null }> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return { ok: true, value: await fastTimeout(fn(), 8000) };
+    } catch {
+      if (attempt < 2) await new Promise((r) => setTimeout(r, 800));
+    }
+  }
+  return { ok: false, value: null };
+}
+
 function fastTimeout<T>(promise: Promise<T>, timeoutMs = 2500, fallbackVal?: T): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -207,55 +220,52 @@ export async function handleFirebaseAuthUser(
   const fp = getDeviceFingerprint();
   const isOwnerUser = email.toLowerCase() === 'nayakhardayal4@gmail.com';
 
-  // 1. Fast Check if user already exists in Firestore by authUid or email
+  // 1. Look up an existing account. A slow/failed lookup must NEVER be treated as "no account"
+  //    (that created a brand-new member ID and reset coins on slow networks, fresh installs and app clones).
   let existingMemberId: string | null = null;
   let existingUserData: any = null;
+  let lookupUncertain = false;
 
-  // Check direct user doc by authUid with fastTimeout
-  try {
-    const authUserSnap = await fastTimeout(getDoc(doc(db, 'users_auth', authUid)), 2000, null);
-    if (authUserSnap && authUserSnap.exists()) {
-      existingMemberId = authUserSnap.data().memberId || null;
-    }
-  } catch (e) {
-    console.warn('Auth map lookup warning:', e);
+  const authLookup = await reliableLookup(() => getDoc(doc(db, 'users_auth', authUid)));
+  if (!authLookup.ok) lookupUncertain = true;
+  if (authLookup.value && authLookup.value.exists()) {
+    existingMemberId = authLookup.value.data().memberId || null;
   }
 
-  // Fast email doc key check if auth map not found
   if (!existingMemberId && email) {
     const safeDocKey = email.trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
-    try {
-      const emailAccSnap = await fastTimeout(getDoc(doc(db, 'email_accounts', safeDocKey)), 2000, null);
-      if (emailAccSnap && emailAccSnap.exists()) {
-        existingMemberId = emailAccSnap.data().memberId || null;
-      }
-    } catch (_) {}
+    const emailLookup = await reliableLookup(() => getDoc(doc(db, 'email_accounts', safeDocKey)));
+    if (!emailLookup.ok) lookupUncertain = true;
+    if (emailLookup.value && emailLookup.value.exists()) {
+      existingMemberId = emailLookup.value.data().memberId || null;
+    }
   }
 
-  // If not found in mapping, query with limit(1) instead of scanning the whole collection!
-  if (!existingMemberId) {
-    try {
-      if (email) {
-        const q = query(collection(db, 'users'), where('email', '==', email.trim().toLowerCase()), limit(1));
-        const usersSnap = await fastTimeout(getDocs(q), 2000, null);
-        if (usersSnap && !usersSnap.empty) {
-          const docSnap = usersSnap.docs[0];
-          existingMemberId = docSnap.data().memberId || docSnap.id;
-          existingUserData = docSnap.data();
-        }
-      }
-    } catch (e) {
-      console.warn('Fast users email lookup warning:', e);
+  if (!existingMemberId && email) {
+    const usersQuery = query(collection(db, 'users'), where('email', '==', email.trim().toLowerCase()), limit(1));
+    const usersLookup = await reliableLookup(() => getDocs(usersQuery));
+    if (!usersLookup.ok) lookupUncertain = true;
+    if (usersLookup.value && !usersLookup.value.empty) {
+      const docSnap = usersLookup.value.docs[0];
+      existingMemberId = docSnap.data().memberId || docSnap.id;
+      existingUserData = docSnap.data();
     }
   }
 
   if (existingMemberId && !existingUserData) {
-    try {
-      const userDocSnap = await fastTimeout(getDoc(doc(db, 'users', existingMemberId)), 2000, null);
-      if (userDocSnap && userDocSnap.exists()) {
-        existingUserData = userDocSnap.data();
-      }
-    } catch (e) {}
+    const memberId = existingMemberId;
+    const userLookup = await reliableLookup(() => getDoc(doc(db, 'users', memberId)));
+    if (!userLookup.ok) lookupUncertain = true;
+    if (userLookup.value && userLookup.value.exists()) {
+      existingUserData = userLookup.value.data();
+    }
+  }
+
+  if (!existingUserData && lookupUncertain) {
+    return {
+      success: false,
+      error: 'Internet slow hai, aapka account verify nahi ho paya. Naya account na ban jaye isliye login roka gaya hai - dobara try karein.'
+    };
   }
 
   const currentLocalWallet = loadUserWallet();
@@ -613,7 +623,11 @@ export async function handleFirestoreEmailSignIn(
     const safeDocKey = normalizedEmail.replace(/[^a-z0-9]/g, '_');
     const accountDocRef = doc(db, 'email_accounts', safeDocKey);
     
-    const accountDoc = await fastTimeout(getDoc(accountDocRef), 3000, null);
+    const accountLookup = await reliableLookup(() => getDoc(accountDocRef));
+    if (!accountLookup.ok) {
+      return { success: false, error: 'Internet slow hai, account verify nahi ho paya. Dobara try karein.' };
+    }
+    const accountDoc = accountLookup.value;
 
     // If doc does not exist but it's the App Owner email, auto-initialize
     if ((!accountDoc || !accountDoc.exists()) && isOwnerUser) {
@@ -637,7 +651,11 @@ export async function handleFirestoreEmailSignIn(
 
     const memberId = accountData.memberId || Math.floor(100000 + Math.random() * 900000).toString();
     const userDocRef = doc(db, 'users', memberId);
-    const userSnap = await fastTimeout(getDoc(userDocRef), 2500, null);
+    const userLookup = await reliableLookup(() => getDoc(userDocRef));
+    if (!userLookup.ok) {
+      return { success: false, error: 'Internet slow hai, account verify nahi ho paya. Dobara try karein.' };
+    }
+    const userSnap = userLookup.value;
 
     let existingUserData = userSnap && userSnap.exists() ? userSnap.data() : null;
 
