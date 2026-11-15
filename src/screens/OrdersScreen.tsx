@@ -94,6 +94,7 @@ export const OrdersScreen: React.FC<OrdersScreenProps> = ({
         smmOrderId: rtOrd.smmOrderId || existing.smmOrderId,
         smmResponse: rtOrd.smmResponse || existing.smmResponse,
         smmStatus: rtOrd.smmStatus || existing.smmStatus,
+        adminStatusLocked: (rtOrd as any).adminStatusLocked ?? (existing as any).adminStatusLocked,
         smmStatusUpdatedAt: rtOrd.smmStatusUpdatedAt || existing.smmStatusUpdatedAt,
         statusReason: rtOrd.statusReason || existing.statusReason,
         timestamp: rtOrd.timestamp || existing.timestamp,

@@ -324,6 +324,7 @@ export function mapSmmStatus(raw?: string | null): Order['status'] | null {
 }
 
 export function getUserVisibleStatus(order: Order, smm?: SmmApiSettings | null): Order['status'] {
+  if ((order as any).adminStatusLocked) return order.status; // admin set it by hand -> final
   if (isSmmPanelConnected(smm) && order.smmOrderId) {
     const fromSmm = mapSmmStatus(order.smmStatus);
     if (fromSmm) return fromSmm;
