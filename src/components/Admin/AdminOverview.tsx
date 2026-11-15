@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { ActivityLog, AdminConfig, Order, UserAccount } from '../../types';
 import { isUserOnline } from '../../utils/storage';
+import { getUserVisibleStatus } from '../../utils/smmService';
 
 interface AdminOverviewProps {
   config: AdminConfig;
@@ -39,9 +40,11 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({
   onSimulateLiveActivity
 }) => {
   const totalOrders = orders.length;
-  const pendingOrders = orders.filter((o) => o.status === 'PROCESSING' || o.status === 'IN_PROGRESS' || (o.status as string) === 'PENDING').length;
-  const completedOrders = orders.filter((o) => o.status === 'COMPLETED').length;
-  const totalCoinsSpent = orders.reduce((acc, curr) => acc + curr.coinsSpent, 0);
+  // Count by the status the user really sees (SMM status when the panel reported one, else admin status)
+  const vs = (o: Order) => getUserVisibleStatus(o, config.smmApi) as string;
+  const pendingOrders = orders.filter((o) => o && ['PROCESSING', 'IN_PROGRESS', 'PENDING'].includes(vs(o))).length;
+  const completedOrders = orders.filter((o) => o && vs(o) === 'COMPLETED').length;
+  const totalCoinsSpent = orders.reduce((acc, curr) => acc + (Number(curr?.coinsSpent) || 0), 0);
 
   const activeOnlineUsers = users.filter((u) => u && isUserOnline(u));
   const offlineUsers = users.filter((u) => u && !isUserOnline(u));
@@ -409,12 +412,12 @@ export const AdminOverview: React.FC<AdminOverviewProps> = ({
                   <span className="text-slate-400 font-semibold">{ord.coinsSpent} Coins</span>
                   <span
                     className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                      ord.status === 'COMPLETED'
+                      vs(ord) === 'COMPLETED'
                         ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                         : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
                     }`}
                   >
-                    {ord.status}
+                    {vs(ord)}
                   </span>
                 </div>
               </div>
