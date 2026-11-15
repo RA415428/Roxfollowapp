@@ -1132,7 +1132,7 @@ app.get('/api/orders', (req, res) => {
 app.patch('/api/orders/:orderId/status', async (req, res) => {
   try {
     const { orderId } = req.params;
-    const { status, updatedAt, reason } = req.body || {};
+    const { status, updatedAt, reason, adminStatusLocked } = req.body || {};
     if (!orderId || !status) {
       return res.status(400).json({ success: false, error: 'Order ID and status are required' });
     }
@@ -1145,7 +1145,8 @@ app.patch('/api/orders/:orderId/status', async (req, res) => {
         ...globalOrders[idx],
         status,
         updatedAt: now,
-        ...(reason ? { statusReason: reason } : {})
+        ...(reason ? { statusReason: reason } : {}),
+        ...(adminStatusLocked ? { adminStatusLocked: true } : {})
       };
       savePersistedState();
       await saveOrdersToFirestore([globalOrders[idx]]);
@@ -1157,7 +1158,8 @@ app.patch('/api/orders/:orderId/status', async (req, res) => {
       id: orderId,
       status,
       updatedAt: now,
-      ...(reason ? { statusReason: reason } : {})
+      ...(reason ? { statusReason: reason } : {}),
+      ...(adminStatusLocked ? { adminStatusLocked: true } : {})
     };
     globalOrders.unshift(newRecord);
     savePersistedState();
@@ -1170,7 +1172,7 @@ app.patch('/api/orders/:orderId/status', async (req, res) => {
 
 app.post('/api/orders/:orderId/status', async (req, res) => {
   const { orderId } = req.params;
-  const { status, updatedAt, reason } = req.body || {};
+  const { status, updatedAt, reason, adminStatusLocked } = req.body || {};
   const prevTime = Number((globalOrders.find(o => o && o.id === orderId) || ({} as any)).updatedAt || 0);
   const now = Math.max(Number(updatedAt) || 0, Date.now(), prevTime + 1);
   const idx = globalOrders.findIndex(o => o && o.id === orderId);
@@ -1179,7 +1181,8 @@ app.post('/api/orders/:orderId/status', async (req, res) => {
       ...globalOrders[idx],
       status,
       updatedAt: now,
-      ...(reason ? { statusReason: reason } : {})
+      ...(reason ? { statusReason: reason } : {}),
+      ...(adminStatusLocked ? { adminStatusLocked: true } : {})
     };
     savePersistedState();
     await saveOrdersToFirestore([globalOrders[idx]]);
