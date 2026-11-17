@@ -44,7 +44,13 @@ async function reliableLookup<T>(fn: () => Promise<T>): Promise<{ ok: boolean; v
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       return { ok: true, value: await fastTimeout(fn(), 8000) };
-    } catch {
+    } catch (e: any) {
+      // Rules deny / missing collection: retrying never helps and it is NOT a network problem.
+      // Treat as "nothing readable here" so login is not blocked for everyone.
+      const code = String(e?.code || '');
+      if (code === 'permission-denied' || code === 'failed-precondition' || code === 'not-found') {
+        return { ok: true, value: null };
+      }
       if (attempt < 2) await new Promise((r) => setTimeout(r, 800));
     }
   }
