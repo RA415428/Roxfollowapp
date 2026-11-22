@@ -3202,6 +3202,84 @@ Instructions:
 });
 
 
+// ============================================================
+// BACKGROUND SMM ORDER STATUS POLLER
+// Keeps service/order status updating on the server itself, independent
+// of any user's phone/app being open. Mirrors the client-side sync logic
+// but runs here so offline users' orders still get updated.
+// ============================================================
+function mapSmmStatusServer(raw?: string | null): string | null {
+  const s = String(raw || '').trim().toLowerCase();
+  if (!s) return null;
+  if (/(cancel|fail|reject|refund)/.test(s)) return 'CANCELLED';
+  if (/(complete|done|finish)/.test(s)) return 'COMPLETED';
+  if (/(partial|progress)/.test(s)) return 'IN_PROGRESS';
+  if (/(pending|queue|waiting|new|processing)/.test(s)) return 'PROCESSING';
+  return null;
+}
+
+let smmPollerRunning = false;
+async function pollSmmOrderStatuses() {
+  if (smmPollerRunning) return;
+  const settings: any = globalAdminConfig.smmApi;
+  if (!settings || !settings.enabled || !String(settings.apiUrl || '').trim()) return;
+  if (/demo-smm-panel/i.test(String(settings.apiUrl))) return;
+
+  smmPollerRunning = true;
+  try {
+    const targets = globalOrders.filter((o: any) => {
+      if (!o || !o.smmOrderId) return false;
+      if (o.adminStatusLocked) return false;
+      const mapped = mapSmmStatusServer(o.smmStatus);
+      if (mapped === 'COMPLETED' || mapped === 'CANCELLED') return false;
+      return true;
+    }).slice(0, 25); // cap per run so we never hammer the SMM panel / hit rate limits
+
+    const updatedOrders: any[] = [];
+
+    for (const order of targets) {
+      try {
+        let apiKey = settings.globalApiKey;
+        const typeLower = String(order.serviceType || '').toLowerCase();
+        if (typeLower.includes('follower') && settings.services?.followers?.apiKey) apiKey = settings.services.followers.apiKey;
+        else if (typeLower.includes('like') && settings.services?.likes?.apiKey) apiKey = settings.services.likes.apiKey;
+        else if ((typeLower.includes('view') || typeLower.includes('reel')) && settings.services?.views?.apiKey) apiKey = settings.services.views.apiKey;
+        else if (typeLower.includes('comment') && settings.services?.comments?.apiKey) apiKey = settings.services.comments.apiKey;
+        else if (typeLower.includes('share') && settings.services?.shares?.apiKey) apiKey = settings.services.shares.apiKey;
+        else if (typeLower.includes('repost') && settings.services?.reposts?.apiKey) apiKey = settings.services.reposts.apiKey;
+        else if (typeLower.includes('save') && settings.services?.saves?.apiKey) apiKey = settings.services.saves.apiKey;
+        else if ((typeLower.includes('reach') || typeLower.includes('impression') || typeLower.includes('visit')) && settings.services?.reach?.apiKey) apiKey = settings.services.reach.apiKey;
+
+        const result = await executeSmmPanelRequest({
+          apiUrl: settings.apiUrl,
+          apiKey,
+          action: 'status',
+          orderId: String(order.smmOrderId)
+        });
+
+        if (result && result.success && result.status) {
+          const rawStatus = String(result.status);
+          if (rawStatus !== order.smmStatus) {
+            order.smmStatus = rawStatus;
+            order.smmStatusUpdatedAt = Date.now();
+            updatedOrders.push(order);
+          }
+        }
+      } catch (err) {
+        console.warn('SMM status poll failed for order', order.id, err);
+      }
+    }
+
+    if (updatedOrders.length > 0) {
+      savePersistedState();
+      await saveOrdersToFirestore(updatedOrders);
+      console.log(`SMM status poller updated ${updatedOrders.length} order(s).`);
+    }
+  } finally {
+    smmPollerRunning = false;
+  }
+}
+
 // --- VITE / STATIC SERVING ---
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
@@ -3221,6 +3299,14 @@ async function startServer() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
+
+  // Fire the status poller independently of any user being online.
+  setTimeout(() => {
+    void pollSmmOrderStatuses();
+    setInterval(() => {
+      pollSmmOrderStatuses().catch((err) => console.warn('SMM status poller crashed:', err));
+    }, 60000);
+  }, 20000);
 }
 
 startServer();
