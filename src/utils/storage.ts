@@ -2153,9 +2153,39 @@ export async function submitPaymentRequest(payload: {
     };
 
     // 2. Direct write to Firebase Firestore (Guarantees persistence even on slow network)
-    await setDoc(doc(db, 'payment_requests', reqId), payRecord, { merge: true }).catch((err) => {
+    let firestoreOk = false;
+    try {
+      await withTimeout(setDoc(doc(db, 'payment_requests', reqId), payRecord, { merge: true }), 8000);
+      firestoreOk = true;
+    } catch (err) {
       console.warn('Firestore payment save error (falling back to server):', err);
-    });
+    }
+
+    // 2b. Sync to backend Express server (now awaited, so we actually know if it worked)
+    let serverOk = false;
+    try {
+      const serverResp = await withTimeout(
+        fetch(getApiUrl('/api/payment/submit'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...payload, utrNumber: cleanUtr, paymentRecord: payRecord })
+        }),
+        15000
+      );
+      serverOk = !!(serverResp && (serverResp as Response).ok);
+    } catch (err) {
+      console.warn('Server payment sync failed:', err);
+    }
+
+    // If BOTH Firestore and the server failed to save this request, nothing exists anywhere.
+    // Tell the user honestly instead of a false "Submitted!" message, and do NOT block this
+    // UTR locally so they can safely try again.
+    if (!firestoreOk && !serverOk) {
+      return {
+        success: false,
+        message: 'Internet slow hai ya server se connect nahi ho paya, isliye payment submit nahi ho payi. Kripya behtar internet ke saath dobara try karein.'
+      };
+    }
 
     // 3. Mark UTR as submitted locally so user cannot submit it again
     try {
@@ -2195,13 +2225,6 @@ export async function submitPaymentRequest(payload: {
       window.dispatchEvent(new Event('instaboost_wallet_updated'));
       window.dispatchEvent(new Event('instaboost_users_updated'));
     }
-
-    // 5. Asynchronously sync to backend Express server
-    fetch(getApiUrl('/api/payment/submit'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...payload, utrNumber: cleanUtr, paymentRecord: payRecord })
-    }).catch(() => {});
 
     return {
       success: true,
