@@ -20,14 +20,16 @@ interface ForceUpdateModalProps {
   onOpenAdmin?: () => void;
   isPreview?: boolean;
   onClosePreview?: () => void;
+  onVerifyPassword?: (password: string) => Promise<boolean>;
 }
 
 export const ForceUpdateModal: React.FC<ForceUpdateModalProps> = ({
   updateConfig,
-  adminPassword = 'admin123',
+  adminPassword,
   onOpenAdmin,
   isPreview = false,
-  onClosePreview
+  onClosePreview,
+  onVerifyPassword
 }) => {
   const [isDownloading, setIsDownloading] = useState(false);
   const [showAdminBypass, setShowAdminBypass] = useState(false);
@@ -77,9 +79,10 @@ export const ForceUpdateModal: React.FC<ForceUpdateModalProps> = ({
     }, 4000);
   };
 
-  const handleBypassSubmit = (e: React.FormEvent) => {
+  const handleBypassSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (passInput === adminPassword || passInput === 'admin123') {
+    const ok = onVerifyPassword ? await onVerifyPassword(passInput) : false;
+    if (ok) {
       setShowAdminBypass(false);
       if (onOpenAdmin) onOpenAdmin();
     } else {

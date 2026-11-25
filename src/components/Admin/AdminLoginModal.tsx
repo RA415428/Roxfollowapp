@@ -7,27 +7,39 @@ interface AdminLoginModalProps {
   onClose: () => void;
   onSuccess: () => void;
   correctPassword: string;
+  onVerifyPassword: (password: string) => Promise<boolean>;
 }
 
 export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
-  correctPassword
+  correctPassword,
+  onVerifyPassword
 }) => {
   const [passwordInput, setPasswordInput] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (passwordInput === correctPassword) {
-      setErrorMsg('');
-      setPasswordInput('');
-      onSuccess();
-    } else {
-      setErrorMsg('Invalid password! Please enter correct admin password.');
+    if (isVerifying) return;
+    setIsVerifying(true);
+    try {
+      const ok = await onVerifyPassword(passwordInput);
+      if (ok) {
+        setErrorMsg('');
+        setPasswordInput('');
+        onSuccess();
+      } else {
+        setErrorMsg('Invalid password! Please enter correct admin password.');
+      }
+    } catch {
+      setErrorMsg('Server se verify nahi ho paya. Internet check karein.');
+    } finally {
+      setIsVerifying(false);
     }
   };
 

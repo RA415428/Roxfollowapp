@@ -192,7 +192,7 @@ export function loadAdminConfig(): AdminConfig {
   return sanitizeAdminConfig(DEFAULT_ADMIN_CONFIG);
 }
 
-export function saveAdminConfig(config: AdminConfig): void {
+export function saveAdminConfig(config: AdminConfig, currentAdminPassword?: string): void {
   try {
     const configToSave: AdminConfig = {
       ...config,
@@ -213,17 +213,47 @@ export function saveAdminConfig(config: AdminConfig): void {
 
     localStorage.setItem(ADMIN_CONFIG_KEY, JSON.stringify(configToSave));
     window.dispatchEvent(new Event('instaboost_config_updated'));
-    // Sync to Express Server
+    // Sync to Express Server ONLY (password-protected). Direct Firestore writes
+    // to config/global were removed on purpose: anyone with the Firebase SDK keys
+    // could otherwise overwrite admin settings without ever knowing the password.
     fetch(getApiUrl('/api/config'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(configToSave)
+      body: JSON.stringify({ ...configToSave, currentAdminPassword })
     }).catch(() => {});
-
-    // Direct Firestore Sync
-    setDoc(doc(db, 'config', 'global'), configToSave, { merge: true }).catch(() => {});
   } catch (err) {
     console.error('Failed to save admin config:', err);
+  }
+}
+
+// Verifies an admin password against the server. The real password is never
+// sent to or stored on the client outside of this one request/response.
+export async function verifyAdminPasswordOnServer(password: string): Promise<boolean> {
+  try {
+    const res = await fetch(getApiUrl('/api/admin/login'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password })
+    });
+    const data = await res.json();
+    return !!(data && data.success);
+  } catch (err) {
+    return false;
+  }
+}
+
+// Fetches the FULL admin config (including real secrets like SMM API keys)
+// for display inside the Admin Panel, once the admin password is verified.
+export async function fetchFullAdminConfig(password: string): Promise<AdminConfig | null> {
+  try {
+    const res = await fetch(getApiUrl('/api/config?adminPassword=' + encodeURIComponent(password)), { cache: 'no-store' });
+    const data = await res.json();
+    if (data && data.success && data.config) {
+      return data.config as AdminConfig;
+    }
+    return null;
+  } catch (err) {
+    return null;
   }
 }
 

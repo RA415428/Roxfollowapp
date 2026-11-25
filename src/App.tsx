@@ -23,6 +23,8 @@ import {
   traceReferralClick,
   initAutoDeviceRestore,
   getApiUrl,
+  verifyAdminPasswordOnServer,
+  fetchFullAdminConfig,
   updateUserOnFirestore,
   updateOrderStatus
 } from './utils/storage';
@@ -177,6 +179,7 @@ export function App() {
 
   // Loaded Storage State
   const [adminConfig, setAdminConfig] = useState<AdminConfig>(loadAdminConfig);
+  const [verifiedAdminPassword, setVerifiedAdminPassword] = useState<string>('');
   const [wallet, setWallet] = useState<UserWallet>(loadUserWallet);
   const [orders, setOrders] = useState<Order[]>(loadOrders);
   const [users, setUsers] = useState<UserAccount[]>(loadUsersList);
@@ -515,8 +518,9 @@ export function App() {
     const isStandaloneAdminMode = urlParams.get('mode') === 'admin' || urlParams.get('app') === 'admin';
 
     if (isStandaloneAdminMode) {
+      // Only show the login prompt here - do NOT switch to the Admin screen yet.
+      // currentScreen only becomes 'ADMIN' after the server confirms the password.
       setShowAdminLoginModal(true);
-      setCurrentScreen('ADMIN');
       return;
     }
 
@@ -631,10 +635,28 @@ export function App() {
     };
   }, []);
 
+  // Verifies the admin password on the server (the real password never lives in
+  // client state beyond this), then pulls the full config (incl. real SMM keys)
+  // for the Admin Panel to display/edit.
+  const handleAdminPasswordVerify = async (password: string): Promise<boolean> => {
+    const ok = await verifyAdminPasswordOnServer(password);
+    if (!ok) return false;
+    setVerifiedAdminPassword(password);
+    try {
+      const fullConfig = await fetchFullAdminConfig(password);
+      if (fullConfig) {
+        setAdminConfig((prev) => ({ ...prev, ...fullConfig }));
+      }
+    } catch {
+      // non-fatal: admin panel still works with the already-held (sanitized) config
+    }
+    return true;
+  };
+
   // Save State updates to LocalStorage & broadcast
   const handleUpdateAdminConfig = (newConfig: AdminConfig) => {
     setAdminConfig(newConfig);
-    saveAdminConfig(newConfig);
+    saveAdminConfig(newConfig, verifiedAdminPassword);
   };
 
   const handleUpdateOrders = (newOrders: Order[]) => {
@@ -1294,6 +1316,7 @@ export function App() {
             setCurrentScreen('ADMIN');
           }}
           correctPassword={adminConfig.adminPassword}
+          onVerifyPassword={handleAdminPasswordVerify}
         />
       </>
     );
@@ -1308,6 +1331,7 @@ export function App() {
         <ForceUpdateModal
           updateConfig={adminConfig.appUpdate}
           adminPassword={adminConfig.adminPassword}
+          onVerifyPassword={handleAdminPasswordVerify}
           onOpenAdmin={() => {
             setIsAdminUnlocked(true);
             setCurrentScreen('ADMIN');
@@ -1363,6 +1387,7 @@ export function App() {
             setCurrentScreen('ADMIN');
           }}
           correctPassword={adminConfig.adminPassword}
+          onVerifyPassword={handleAdminPasswordVerify}
         />
       </>
     );
@@ -1501,6 +1526,7 @@ export function App() {
             setCurrentScreen('ADMIN');
           }}
           correctPassword={adminConfig.adminPassword}
+          onVerifyPassword={handleAdminPasswordVerify}
         />
 
         <AnnouncementModal

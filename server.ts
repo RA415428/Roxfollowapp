@@ -1028,17 +1028,55 @@ app.post('/api/notifications/send', async (req, res) => {
 });
 
 app.get('/api/config', (req, res) => {
-  res.json({
-    success: true,
-    config: globalAdminConfig
-  });
+  const suppliedPassword = typeof req.query.adminPassword === 'string' ? req.query.adminPassword : '';
+  const isAuthedAdmin = !!suppliedPassword && suppliedPassword === globalAdminConfig.adminPassword;
+
+  if (isAuthedAdmin) {
+    // Correct admin password supplied -> safe to return the full config (incl. secrets)
+    res.json({ success: true, config: globalAdminConfig });
+    return;
+  }
+
+  // Public/unauthenticated request -> strip every secret before responding
+  const safeSmmApi: any = globalAdminConfig.smmApi ? {
+    ...globalAdminConfig.smmApi,
+    globalApiKey: '',
+    services: Object.fromEntries(
+      Object.entries(globalAdminConfig.smmApi.services || {}).map(([key, val]: [string, any]) => [key, { ...val, apiKey: '' }])
+    )
+  } : globalAdminConfig.smmApi;
+  const safeBranchSettings: any = globalAdminConfig.branchSettings
+    ? { ...globalAdminConfig.branchSettings, branchKey: '' }
+    : globalAdminConfig.branchSettings;
+
+  const publicConfig = {
+    ...globalAdminConfig,
+    adminPassword: '',
+    smmApi: safeSmmApi,
+    branchSettings: safeBranchSettings
+  };
+
+  res.json({ success: true, config: publicConfig });
+});
+
+// Verify an admin password without ever exposing the real password to the client
+app.post('/api/admin/login', (req, res) => {
+  const suppliedPassword = req.body && typeof req.body.password === 'string' ? req.body.password : '';
+  const ok = !!suppliedPassword && suppliedPassword === globalAdminConfig.adminPassword;
+  res.json({ success: ok });
 });
 
 // 2. Update Admin Config (From Admin Panel)
 app.post('/api/config', async (req, res) => {
   try {
     const updated = req.body;
+    const suppliedPassword = updated && typeof updated.currentAdminPassword === 'string' ? updated.currentAdminPassword : '';
+    if (!suppliedPassword || suppliedPassword !== globalAdminConfig.adminPassword) {
+      res.status(401).json({ success: false, error: 'Invalid or missing admin password. Settings were NOT updated.' });
+      return;
+    }
     if (updated && typeof updated === 'object') {
+      delete updated.currentAdminPassword;
       globalAdminConfig = {
         ...globalAdminConfig,
         ...updated,
